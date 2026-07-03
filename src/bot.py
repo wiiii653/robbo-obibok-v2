@@ -12,6 +12,7 @@ from discord.ext import commands
 
 from .collection_loader import flip_collection, get_collection, load_raw_paths
 from .embeds import now_playing_embed, queue_embed, status_embed
+from .favorites import PlaylistLibrary
 from .models import PlaybackState
 from .monitor import TrackMonitor
 from .playback import PlaybackEngine
@@ -64,6 +65,50 @@ class ObibokBot(commands.Bot):
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
+        if member.bot:
+            return
+        if not self.bot.auto_start_channel:
+            return
+        if not member.guild:
+            return
+        if before.channel is not None:
+            return
+        if after.channel is None:
+            return
+        if after.channel.name != self.bot.auto_start_channel:
+            return
+        if member.guild.voice_client:
+            return
+        state = self.bot.get_state(member.guild.id)
+        if state.is_playing:
+            return
+        if not member.guild.me or not member.guild.me.voice:
+            pass
+        try:
+            vc = await after.channel.connect()
+            track = self.bot.engine.start_radio(state, user_id=member.id)
+            if not track:
+                await vc.disconnect()
+                return
+            state.voice_channel_id = after.channel.id
+
+            class FakeCtx:
+                def __init__(self, guild, author, voice_client, send_fn):
+                    self.guild = guild
+                    self.author = author
+                    self.voice_client = voice_client
+                    self._send = send_fn
+
+                async def send(self, *args, **kwargs):
+                    return await self._send(*args, **kwargs)
+
+            ctx = FakeCtx(member.guild, member, vc, member.guild.system_channel.send)
+            await self._play_and_monitor(ctx, state)
+        except Exception as exc:
+            logger.warning("Auto-start failed: %s", exc)
 
     @commands.command(aliases=["pl", "radio", "start"])
     async def play(self, ctx: commands.Context, *, query: str = "") -> None:
@@ -242,8 +287,18 @@ class PlaybackCog(commands.Cog):
             if next_t:
                 await self._play_and_monitor(ctx, s)
 
+        async def on_empty() -> None:
+            await self.bot.engine.stop(state)
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+
+        def get_voice_members() -> int:
+            if not ctx.guild or not ctx.voice_client:
+                return 0
+            return len([m for m in ctx.voice_client.channel.members if not m.bot])
+
         self.bot._monitor_tasks[ctx.guild.id] = asyncio.create_task(
-            self.bot.monitor.monitor_loop(state, on_track_end)
+            self.bot.monitor.monitor_loop(state, on_track_end, on_empty, get_voice_members)
         )
 
     async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState) -> None:
@@ -444,6 +499,44 @@ class FavoritesCog(commands.Cog):
             await ctx.send(f"Removed `{removed.rsplit('/', 1)[-1]}`.")
         else:
             await ctx.send("Invalid index.")
+
+    @commands.command(aliases=["pls"])
+    async def favsave(self, ctx: commands.Context, *, name: str) -> None:
+        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+        if not tracks:
+            return await ctx.send("No favorites to save.")
+        lib = PlaylistLibrary(self.bot.root_dir)
+        lib.save(name, tracks, ctx.author.id, ctx.author.name)
+        await ctx.send(f"Saved as `{name}` ({len(tracks)} tracks).")
+
+    @commands.command(aliases=["fpl"])
+    async def favload(self, ctx: commands.Context, *, name: str) -> None:
+        if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.send("Join a voice channel first!")
+        lib = PlaylistLibrary(self.bot.root_dir)
+        playlist = lib.load(name)
+        if not playlist:
+            return await ctx.send(f"Playlist `{name}` not found.")
+        state = self.bot.get_state(ctx.guild.id)
+        state.queue = [t["filepath"] for t in playlist.get("tracks", [])]
+        random.shuffle(state.queue)
+        state.position = 0
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
+        await ctx.author.voice.channel.connect()
+        state.voice_channel_id = ctx.author.voice.channel.id
+        cog = self.bot.get_cog("PlaybackCog")
+        if cog:
+            await cog._play_and_monitor(ctx, state)
+
+    @commands.command(aliases=["plist"])
+    async def playlists(self, ctx: commands.Context) -> None:
+        lib = PlaylistLibrary(self.bot.root_dir)
+        playlists = lib.list_playlists()
+        if not playlists:
+            return await ctx.send("No saved playlists.")
+        lines = [f"`{p['name']}` — {p['tracks']} tracks by {p['author']}" for p in playlists]
+        await ctx.send("\n".join(lines))
 
 
 class ToolsCog(commands.Cog):
