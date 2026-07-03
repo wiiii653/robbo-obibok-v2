@@ -8,7 +8,7 @@
 command_prefix: "!"
 
 # Optional: restrict bot to a single Discord server (guild ID)
-# guild_id: 123456789012345678
+guild_id: 1470009221117382689
 
 # Audio settings
 audio:
@@ -29,5 +29,5 @@ archive:
 
 # Auto-start / Auto-stop
 auto:
-  start_channel: ""  # voice channel name to auto-start (empty = disabled)
+  start_channel: "Chiptune Radio"  # voice channel name to auto-start (empty = disabled)
   empty_timeout: 60  # seconds before disconnect when channel is empty

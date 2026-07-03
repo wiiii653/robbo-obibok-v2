@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import time
@@ -51,6 +52,7 @@ def start_player() -> bool:
         ["audacious", "--headless"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env={**os.environ, "PULSE_SINK": "robbo_bot"},
     )
     for _ in range(20):
         if _audtool_call("version"):
@@ -74,16 +76,20 @@ def kill_player() -> None:
 def play_file(filepath: str, sink_name: str) -> bool:
     if not _audacious_ready:
         start_player()
+    logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
     _audtool_call("playlist-clear")
-    _audtool_call("playlist-addurl", filepath)
-    for attempt in range(3):
-        _audtool_call("playback-play")
-        time.sleep(0.5)
+    add_ok = _audtool_call("playlist-addurl", filepath)
+    play_ok = _audtool_call("playback-play")
+    logger.info("play_file: add=%s play=%s", add_ok, play_ok)
+    for attempt in range(10):
+        time.sleep(1)
         if _audtool_call("playback-playing"):
             _move_to_sink(sink_name)
+            logger.info("play_file: playing after %ds", attempt + 1)
             return True
         logger.warning("play_file: attempt %d failed, retrying", attempt + 1)
     _audtool_call("playlist-clear")
+    logger.error("play_file: FAILED after 10 attempts, filepath=%s", filepath)
     return False
 
 
