@@ -51,6 +51,7 @@ class PlaybackEngine:
         if success:
             state.current_track = track
             state.is_playing = True
+            state.played_count += 1
             state.history.append(track)
             if len(state.history) > 20:
                 state.history = state.history[-20:]

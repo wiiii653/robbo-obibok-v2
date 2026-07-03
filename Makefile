@@ -31,7 +31,7 @@ $(VENV)/bin/activate: pyproject.toml
 
 run: $(VENV)/bin/activate
 	@echo "Starting Robbo Obibok v2..."
-	@cd $(CURDIR) && PYTHONPATH=src $(PYTHON) -m robbo_obibok
+	@cd $(CURDIR) && PYTHONPATH=src $(PYTHON) -m src
 
 test: $(VENV)/bin/activate
 	@echo "Running tests..."

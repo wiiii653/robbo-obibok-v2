@@ -81,12 +81,12 @@ def main() -> None:
     setup_logging()
     config = load_config()
 
+    load_dotenv(config.root_dir)
+    config.token = os.environ.get("DISCORD_BOT_TOKEN", config.token)
+
     if not config.token:
         logger.error("No DISCORD_BOT_TOKEN set. Add it to .env or environment.")
         sys.exit(1)
-
-    load_dotenv(config.root_dir)
-    config.token = os.environ.get("DISCORD_BOT_TOKEN", config.token)
 
     logger.info("Starting Robbo Obibok v2...")
     logger.info("Root: %s", config.root_dir)

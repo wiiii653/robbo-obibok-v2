@@ -15,53 +15,45 @@ Discord chiptune radio bot that streams vintage retro chipmusic from seven colle
 - **Testing:** pytest + pytest-cov (coverage ≥ 65%)
 - **No mypy** — type hints are used but mypy is not in the toolchain
 
-## Architecture — Layered Hexagonal
+## Architecture — Flat Module Layout
 
 ```
-src/robbo_obibok/
-├── domain/                 # Pure config + state models (NO asyncio, NO discord, NO aiohttp)
-│   ├── config.py           # AppConfig, PlaybackConfig, PathConfig, ArchiveConfig
-│   ├── archive_config.py   # ArchiveRuntimeConfig
-│   ├── collection_state.py # Collection state models
-│   └── queue_state.py      # Queue state models
-├── application/            # Pure command + playback policies (NO infrastructure imports)
-│   ├── command_policy.py   # Command authorization rules
-│   └── playback_policy.py  # Playback decision logic
-├── infrastructure/         # Environment and persistence adapters
-│   ├── environment.py      # System env access
-│   └── persistence.py      # JSON file read/write
-├── compatibility/          # Legacy entrypoint export policy + adapters
-│   ├── bindings.py         # Entrypoint export graph
-│   └── surface.py          # Stable surface aliases
-├── bot_*.py                # Discord bot runtime, events, dependencies
-├── playback_*.py           # Audio playback: process, service, monitor, volume, assets
-├── entrypoint_*.py         # DI / composition root, lifecycle, bootstrap
-├── runtime_*.py            # Runtime wiring, bindings, state, task manager
-├── collection_*.py         # Collection specs, catalog, service
-├── archive_*.py            # Archive abstraction, catalog, downloads, runtime
-└── session_*.py            # Per-session context, playback deps
+src/
+├── __init__.py            # Package marker
+├── __main__.py            # Entry point (python -m src)
+├── config.py              # YAML/env configuration loading
+├── models.py              # Data models and dataclasses
+├── persistence.py         # JSON file read/write
+├── collection_loader.py   # Collection index loading and catalog
+├── audio.py               # Audio process management (Audacious, PulseAudio, FFmpeg)
+├── queue.py               # Track queue per guild
+├── favorites.py           # User favorites (react-to-save)
+├── playback.py            # Playback session logic and commands
+├── monitor.py             # Audio monitor (track completion detection)
+├── embeds.py              # Discord embed builders (Now Playing, etc.)
+├── bot.py                 # Discord bot client, events, command routing
+└── launcher.py            # Bot startup and lifecycle management
 ```
-
-### Layer Rules (enforced by tests in test_architecture.py)
-
-1. **domain/** must NOT import: discord, aiohttp, asyncio, subprocess, threading
-2. **domain/** must be synchronous — no `async def` or `await`
-3. **domain/** must NOT import upper layers (entrypoint_*, runtime_*, playback_*, bot_*, archive_*, collection_*)
-4. **application/** must NOT import: aiohttp, discord, infrastructure, subprocess
-5. Production code must NOT import legacy `domain_*.py` facades — import from `domain/` package
-6. Import passive models from `*_models` modules, not from active modules (e.g., `bot_runtime_models` not `bot_runtime`)
-7. Import protocols from `entrypoint_state_protocols`, not from `entrypoint_state`
 
 ## Project Structure
 
 ```
 robbo-obibok-v2/
-├── src/
-│   └── robbo_obibok/           # Installable Python package
-│       ├── domain/             # Pure domain layer
-│       ├── application/        # Application policies
-│       ├── infrastructure/     # IO adapters
-│       └── compatibility/      # Legacy compat layer
+├── src/                        # Source package (flat layout)
+│   ├── __init__.py             # Package marker
+│   ├── __main__.py             # Entry point
+│   ├── config.py               # Configuration loading
+│   ├── models.py               # Data models and dataclasses
+│   ├── persistence.py          # JSON file read/write
+│   ├── collection_loader.py    # Collection index loading
+│   ├── audio.py                # Audio process management
+│   ├── queue.py                # Track queue per guild
+│   ├── favorites.py            # User favorites
+│   ├── playback.py             # Playback session logic
+│   ├── monitor.py              # Audio monitor
+│   ├── embeds.py               # Discord embed builders
+│   ├── bot.py                  # Discord bot client
+│   └── launcher.py             # Bot startup lifecycle
 ├── tests/
 │   ├── integration/            # Real dependency tests (opt-in via env vars)
 │   └── test_*.py               # Unit tests
@@ -140,7 +132,6 @@ All archives served from local disk. Indexes are pre-built as `*_cache_local.jso
 
 - Unit tests: `make test` (offline, excludes `tests/integration`)
 - Integration tests require env vars: `DISCORD_INTEGRATION_TOKEN`, `RUN_LIVE_AUDIO_INTEGRATION=1`, `RUN_LOCAL_ARCHIVE_INTEGRATION=1`
-- Architecture boundary tests enforce layer rules via AST analysis
 - Launcher smoke tests via `scripts/test_launchers.sh`
 
 ## Patterns to Follow
