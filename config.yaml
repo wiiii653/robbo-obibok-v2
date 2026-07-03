@@ -1,0 +1,33 @@
+# Robbo Obibok v2 — Configuration
+# Copy this file to config.yaml and adjust to your needs.
+
+# Discord bot token (can also be set via DISCORD_BOT_TOKEN env var)
+# token: "YOUR_DISCORD_BOT_TOKEN_HERE"
+
+# Command prefix (default: !)
+command_prefix: "!"
+
+# Optional: restrict bot to a single Discord server (guild ID)
+# guild_id: 123456789012345678
+
+# Audio settings
+audio:
+  sink_name: "robbo_bot"
+  sample_rate: 48000
+  channels: 2
+  format: "s16le"
+
+# Playback
+playback:
+  loop: true
+  shuffle: true
+  crossfade: 0
+
+# Archive storage path (relative to project root)
+archive:
+  path: "archiwum"
+
+# Auto-start / Auto-stop
+auto:
+  start_channel: ""  # voice channel name to auto-start (empty = disabled)
+  empty_timeout: 60  # seconds before disconnect when channel is empty

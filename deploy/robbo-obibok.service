@@ -1,0 +1,16 @@
+[Unit]
+Description=Robbo Obibok v2 — Discord Chiptune Radio
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/robbo-obibok-v2
+EnvironmentFile=%h/robbo-obibok-v2/.env
+ExecStart=%h/robbo-obibok-v2/venv/bin/python3 -u -m robbo_obibok
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
