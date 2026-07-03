@@ -107,8 +107,8 @@ class PlaybackEngine:
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
-        track = current_track(state)
-        if not track:
+        item = current_track(state)
+        if not item:
             return None
         playback_path = await self._resolve_track_path(state, track)
         if playback_path is None:
@@ -137,7 +137,7 @@ class PlaybackEngine:
         track = next_track(state)
         if not track:
             return None
-        return await self.play_track(state)
+        return track
 
     async def stop(self, state: PlaybackState) -> None:
         await asyncio.to_thread(self.audio.stop)
@@ -261,7 +261,8 @@ class PlaybackEngine:
     def toggle_favorite(self, user_id: int, filepath: str, collection_id: str) -> bool:
         meta = self.get_track_metadata(filepath, collection_id)
         title = meta.get("NAME", filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0])
-        return self.favorites.toggle(user_id, filepath, title, collection_id)
+        author = meta.get("AUTHOR", "")
+        return self.favorites.toggle(user_id, filepath, title, collection_id, author)
 
     def blacklist_current(self, user_id: int, state: PlaybackState) -> bool:
         track = current_track(state)
