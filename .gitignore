@@ -22,3 +22,5 @@ playlists/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+AGENTS.md
+BUILD_PLAN.md
