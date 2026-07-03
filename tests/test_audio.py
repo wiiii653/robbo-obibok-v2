@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from src.audio import (
@@ -179,3 +180,172 @@ class TestAudioController:
         ctrl = AudioController(sink_name="test_sink")
         ctrl.set_collection_volume("hvsc")
         mock_vol.assert_called_once_with("hvsc", "test_sink")
+
+
+class TestSinkManagement:
+    @patch("src.audio.subprocess.run")
+    def test_setup_sink_exists(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="robbo_test_sink")
+        from src.audio import setup_sink
+        assert setup_sink("robbo_test_sink") is True
+        mock_run.assert_called_once()
+
+    @patch("src.audio.subprocess.run")
+    def test_setup_sink_creates(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="some_other_sink"),
+            MagicMock(returncode=0),
+        ]
+        from src.audio import setup_sink
+        assert setup_sink("robbo_test_sink") is True
+        assert mock_run.call_count == 2
+
+
+class TestPlayerLifecycle:
+    @patch("src.audio._audtool_call")
+    def test_stop_player(self, mock_tool):
+        mock_tool.return_value = True
+        from src.audio import stop_player
+        stop_player()
+        assert mock_tool.call_count == 2
+
+    @patch("src.audio.subprocess.run")
+    @patch("src.audio._audtool_call")
+    def test_kill_player(self, mock_tool, mock_run):
+        mock_tool.return_value = True
+        mock_run.return_value = MagicMock(returncode=0)
+        from src.audio import kill_player
+        kill_player()
+        mock_tool.assert_any_call("playback-stop")
+        mock_run.assert_called_once()
+
+    @patch("src.audio._audtool_call")
+    def test_stop_playback(self, mock_tool):
+        mock_tool.return_value = True
+        from src.audio import stop_playback
+        stop_playback()
+        assert mock_tool.call_count == 2
+
+    @patch("src.audio.subprocess.run")
+    @patch("src.audio._audtool_call")
+    def test_ensure_audacious_alive(self, mock_tool, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="1234")
+        mock_tool.return_value = True
+        from src.audio import ensure_audacious, _audacious_ready
+        import src.audio
+        src.audio._audacious_ready = True
+        ensure_audacious()
+        assert mock_tool.call_count >= 1
+
+    @patch("src.audio.start_player")
+    @patch("src.audio.subprocess.run")
+    @patch("src.audio._audtool_call")
+    def test_ensure_audacious_dead(self, mock_tool, mock_run, mock_start):
+        mock_run.side_effect = [
+            MagicMock(returncode=1),
+            MagicMock(returncode=0),
+        ]
+        mock_tool.side_effect = [True]
+        mock_start.return_value = True
+        from src.audio import ensure_audacious
+        import src.audio
+        src.audio._audacious_ready = True
+        ensure_audacious()
+
+    @patch("src.audio.subprocess.run")
+    def test_audtool_call_success(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        from src.audio import _audtool_call
+        assert _audtool_call("version") is True
+        mock_run.assert_called_with(["audtool", "version"], capture_output=True, timeout=10)
+
+    @patch("src.audio.subprocess.run")
+    def test_audtool_call_failure(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        from src.audio import _audtool_call
+        assert _audtool_call("version") is False
+
+    @patch("src.audio.subprocess.run")
+    def test_audtool_call_timeout(self, mock_run):
+        mock_run.side_effect = subprocess.TimeoutExpired("audtool", 10)
+        from src.audio import _audtool_call
+        assert _audtool_call("version") is False
+
+    @patch("src.audio.subprocess.run")
+    def test_is_audacious_alive_true(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="1234\n"),
+            MagicMock(returncode=0),
+        ]
+        from src.audio import _is_audacious_alive
+        assert _is_audacious_alive() is True
+
+    @patch("src.audio.subprocess.run")
+    def test_is_audacious_alive_false(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        from src.audio import _is_audacious_alive
+        assert _is_audacious_alive() is False
+
+
+class TestAudioConfig:
+    def test_set_volume_for_collection(self):
+        from src.audio import set_volume_for_collection
+        with patch("src.audio.set_volume") as mock_set:
+            set_volume_for_collection("hvsc", "test_sink")
+            mock_set.assert_called_with("test_sink", 120)
+
+    @patch("src.audio._audtool_call")
+    def test_enable_compressor(self, mock_tool):
+        mock_tool.return_value = True
+        from src.audio import enable_compressor
+        enable_compressor()
+        mock_tool.assert_called_with("plugin-enable", "compressor", "TRUE")
+
+    @patch("src.audio._audtool_call")
+    def test_setup_sid_config(self, mock_tool):
+        mock_tool.return_value = True
+        from src.audio import setup_sid_config
+        setup_sid_config()
+        assert mock_tool.call_count == 3
+
+    @patch("src.audio.setup_sink")
+    @patch("src.audio.start_player")
+    @patch("src.audio.setup_sid_config")
+    @patch("src.audio.enable_compressor")
+    def test_controller_setup(self, mock_comp, mock_sid, mock_start, mock_sink):
+        mock_start.return_value = True
+        ctrl = AudioController(sink_name="test_sink")
+        ctrl.setup()
+        mock_sink.assert_called_once_with("test_sink")
+        mock_sid.assert_called_once()
+        mock_comp.assert_called_once()
+
+    @patch("src.audio.kill_player")
+    def test_controller_kill(self, mock_kill):
+        ctrl = AudioController()
+        ctrl.kill()
+        mock_kill.assert_called_once()
+
+    @patch("src.audio.current_song")
+    def test_controller_current_song(self, mock_song):
+        mock_song.return_value = "test.sap"
+        ctrl = AudioController()
+        assert ctrl.current_song() == "test.sap"
+
+    @patch("src.audio.song_length")
+    def test_controller_song_length(self, mock_len):
+        mock_len.return_value = 300
+        ctrl = AudioController()
+        assert ctrl.song_length() == 300
+
+    @patch("src.audio.output_length")
+    def test_controller_output_length(self, mock_len):
+        mock_len.return_value = 120
+        ctrl = AudioController()
+        assert ctrl.output_length() == 120
+
+    @patch("src.audio.ensure_audacious")
+    def test_controller_ensure_ready(self, mock_ensure):
+        ctrl = AudioController()
+        ctrl.ensure_ready()
+        mock_ensure.assert_called_once()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 from src.config import AppConfig
 from src.launcher import create_bot, load_dotenv, remove_pid, write_pid
@@ -52,3 +53,22 @@ class TestCreateBot:
         assert bot is not None
         assert bot.engine is not None
         assert bot.monitor is not None
+
+
+class TestSetupLogging:
+    def test_setup_logging_runs(self):
+        from src.launcher import setup_logging
+        setup_logging()
+        assert True
+
+    @patch("src.launcher.sys.exit")
+    @patch("src.launcher.load_config")
+    def test_main_no_token_exits(self, mock_config, mock_exit):
+        mock_config.return_value = AppConfig()
+        mock_exit.side_effect = SystemExit
+        from src.launcher import main
+        try:
+            main()
+        except SystemExit:
+            pass
+        mock_exit.assert_called_once_with(1)

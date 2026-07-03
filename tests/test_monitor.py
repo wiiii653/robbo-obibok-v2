@@ -99,3 +99,147 @@ class TestTrackMonitor:
         except asyncio.CancelledError:
             pass
         assert len(ended) == 0
+
+
+class TestMonitorTickBranches:
+    @pytest.mark.asyncio
+    async def test_tick_not_playing_returns_early(self):
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: False,
+            "output_length": lambda self=None: 0,
+            "song_length": lambda self=None: 0,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": False, "current_track": "test.sap"})()
+        called = []
+
+        async def on_end(s):
+            called.append(True)
+
+        await monitor._tick(state=state, on_track_end=on_end, on_empty=None, get_voice_members=None)
+        assert len(called) == 0
+
+    @pytest.mark.asyncio
+    async def test_tick_timeout_detection(self):
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 9999,
+            "song_length": lambda self=None: 0,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
+        ended = []
+
+        async def on_end(s):
+            ended.append(True)
+            s.is_playing = False
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) >= 1
+
+    @pytest.mark.asyncio
+    async def test_tick_output_reset_detection(self):
+        """When output_length resets (new track started on same track), detect as track end."""
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 5,
+            "song_length": lambda self=None: 100,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        monitor._last_output = 10  # simulate output decreasing = new track start
+        monitor._last_track = "test.sap"  # same track so no track-change reset
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
+        ended = []
+
+        async def on_end(s):
+            ended.append(True)
+            s.is_playing = False
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) >= 1
+
+    @pytest.mark.asyncio
+    async def test_tick_empty_channel(self):
+        """When voice channel has no members, trigger on_empty."""
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 10,
+            "song_length": lambda self=None: 100,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
+        emptied = []
+
+        async def on_end(s):
+            pass
+
+        async def on_empty():
+            emptied.append(True)
+
+        await monitor._tick(state, on_end, on_empty, lambda: 0)
+        assert len(emptied) >= 1
+
+    @pytest.mark.asyncio
+    async def test_tick_elapsed_negative(self):
+        """When output_length returns -1, function should return early."""
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: -1,
+            "song_length": lambda self=None: 0,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
+        ended = []
+
+        async def on_end(s):
+            ended.append(True)
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) == 0
+
+    @pytest.mark.asyncio
+    async def test_tick_track_change_resets_output(self):
+        """When current track changes, _last_output resets to avoid false track end."""
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 30,
+            "song_length": lambda self=None: 100,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        monitor._last_output = 50
+        monitor._last_track = "old.sap"
+        state = type("State", (), {"is_playing": True, "current_track": "new.sap"})()
+        ended = []
+
+        async def on_end(s):
+            ended.append(True)
+
+        await monitor._tick(state, on_end, None, None)
+        # track changed → _last_output reset to 0 → no false detection
+        assert monitor._last_track == "new.sap"
+        assert monitor._last_output == 30  # updated after tick
+        assert len(ended) == 0
+
+    @pytest.mark.asyncio
+    async def test_monitor_loop_runs_ticks(self):
+        """Monitor loop runs ticks until cancelled without error."""
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 5,
+            "song_length": lambda self=None: 100,
+        })()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
+        loop_started = False
+
+        async def on_end(s):
+            pass
+
+        task = asyncio.create_task(monitor.monitor_loop(state, on_end))
+        await asyncio.sleep(0.3)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert True  # reached here without error = loop ran
