@@ -31,7 +31,12 @@ class ObibokBot(commands.Bot):
         auto_start_channel: str = "",
         empty_timeout: int = 60,
     ) -> None:
-        super().__init__(command_prefix=command_prefix, intents=discord.Intents.all())
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.voice_states = True
+        intents.reactions = True
+        intents.members = True
+        super().__init__(command_prefix=command_prefix, intents=intents)
         self.engine = engine
         self.monitor = monitor
         self.root_dir = root_dir
@@ -55,6 +60,18 @@ class ObibokBot(commands.Bot):
             self._states[guild_id] = PlaybackState(guild_id=guild_id)
         return self._states[guild_id]
 
+    def check_guild(self, ctx: commands.Context) -> bool:
+        if self.guild_id is None:
+            return True
+        if ctx.guild is None:
+            return False
+        return ctx.guild.id == self.guild_id
+
+    async def process_commands(self, message: discord.Message) -> None:
+        if self.guild_id is not None and message.guild and message.guild.id != self.guild_id:
+            return
+        await super().process_commands(message)
+
     async def setup_hook(self) -> None:
         self.add_cog(PlaybackCog(self))
         self.add_cog(CollectionCog(self))
@@ -73,6 +90,8 @@ class PlaybackCog(commands.Cog):
         if not self.bot.auto_start_channel:
             return
         if not member.guild:
+            return
+        if self.bot.guild_id is not None and member.guild.id != self.bot.guild_id:
             return
         if before.channel is not None:
             return
