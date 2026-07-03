@@ -70,7 +70,7 @@ class Favorites:
     def _save(self) -> None:
         save_json(self._filepath, self._data)
 
-    def toggle(self, user_id: int, filepath: str, title: str = "", collection_id: str = "") -> bool:
+    def toggle(self, user_id: int, filepath: str, title: str = "", collection_id: str = "", author: str = "") -> bool:
         self._ensure_loaded()
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
@@ -90,6 +90,7 @@ class Favorites:
         tracks.append({
             "filepath": filepath,
             "title": title,
+            "author": author,
             "collection_id": collection_id,
             "added_at": time.time(),
         })

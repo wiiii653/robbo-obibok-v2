@@ -66,21 +66,26 @@ class ObibokBot(commands.Bot):
         self._np_messages[msg_id] = data
 
     def _start_stream(self, guild_id: int, voice_client: discord.VoiceClient) -> None:
-        """Start or restart the MonitorAudioSource on the given voice client."""
+        """Start or restart the PulseAudio monitor stream on the given voice client."""
         old = self._active_streams.pop(guild_id, None)
         if old:
-            old.cleanup()
-        source = MonitorAudioSource(sink_name=self.sink_name)
+            if hasattr(old, "cleanup"):
+                old.cleanup()
+            elif voice_client.is_playing():
+                voice_client.stop()
+        logger.info("Stream started for guild %d", guild_id)
+        source = discord.FFmpegPCMAudio(f"{self.sink_name}.monitor", before_options="-f pulse")
         source.source_id = id(source)
         voice_client.play(
             source,
             after=lambda e: self._on_stream_end(guild_id, e, source.source_id),
         )
+        logger.info("voice_client.play() called")
         self._active_streams[guild_id] = source
 
     def _stop_stream(self, guild_id: int) -> None:
         source = self._active_streams.pop(guild_id, None)
-        if source:
+        if source and hasattr(source, "cleanup"):
             source.cleanup()
 
     def _on_stream_end(self, guild_id: int, error: Exception | None, source_id: int) -> None:
@@ -209,8 +214,6 @@ class PlaybackCog(commands.Cog):
         if after.channel is None:
             return
         if after.channel.name != self.bot.auto_start_channel:
-            return
-        if member.guild.voice_client:
             return
         state = self.bot.get_state(member.guild.id)
         if state.is_playing:
@@ -542,9 +545,7 @@ class PlaybackCog(commands.Cog):
                 await ctx.voice_client.disconnect()
 
         def get_voice_members() -> int:
-            if not ctx.guild or not ctx.voice_client:
-                return 0
-            return len([m for m in ctx.voice_client.channel.members if not m.bot])
+            return 1
 
         async def run_monitor() -> None:
             try:
@@ -753,34 +754,55 @@ class FavoritesCog(commands.Cog):
     async def favorites(self, ctx: commands.Context) -> None:
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         if not tracks:
-            return await ctx.send("No favorites yet. React to Now Playing embeds!")
-        lines = [f"`{i+1}.` `{t.get('title', t['filepath'].rsplit('/', 1)[-1])}`" for i, t in enumerate(tracks[:15])]
-        await ctx.send(f"**Favorites ({len(tracks)}):**\n" + "\n".join(lines))
+            return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
+        lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
+        for i, t in enumerate(tracks, 1):
+            name = t.get("title", t["filepath"].rsplit("/", 1)[-1])
+            author_s = f" — {t['author']}" if t.get("author") else ""
+            lines.append(f"`{i}.` {name}{author_s}")
+        for chunk_start in range(0, len(lines), 15):
+            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
 
     @commands.command(aliases=["fp"])
-    async def favplay(self, ctx: commands.Context) -> None:
+    async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
         if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("Join a voice channel first!")
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         if not tracks:
-            return await ctx.send("No favorites yet.")
+            return await ctx.send("📭 **No favorites yet.** React to any Now Playing embed with an emoji to save tracks!")
+        if number:
+            try:
+                idx = int(number) - 1
+                if idx < 0 or idx >= len(tracks):
+                    return await ctx.send(f"Number must be between 1 and {len(tracks)}.")
+                filtered = [tracks[idx]]
+            except ValueError:
+                return await ctx.send("Usage: `!favplay <number>` or `!favplay` to play all.")
+        else:
+            bl_tracks = self.bot.engine.blacklist.get_tracks(ctx.author.id)
+            filtered = [t for t in tracks if t["filepath"] not in bl_tracks]
+            import random
+            random.shuffle(filtered)
+        if not filtered:
+            return await ctx.send("⛔ All favorites are blacklisted. Nothing to play!")
         if not self.bot.try_acquire_lease(ctx.guild):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
         queued = [
             (track["filepath"], track.get("collection_id") or state.collection_mode)
-            for track in tracks
+            for track in filtered
         ]
-        random.shuffle(queued)
         state.queue = [filepath for filepath, _ in queued]
         state.queue_collection_ids = [collection_id for _, collection_id in queued]
         state.position = 0
+        state.is_looping = True
         try:
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
             await ctx.author.voice.channel.connect()
             state.voice_channel_id = ctx.author.voice.channel.id
+            await ctx.send(f"🎵 **Playing {len(filtered)} favorites!**")
             cog = self.bot.get_cog("PlaybackCog")
             if cog:
                 await cog._play_and_monitor(ctx, state)
@@ -829,6 +851,16 @@ class FavoritesCog(commands.Cog):
 
     @commands.command(aliases=["fpl"])
     async def favload(self, ctx: commands.Context, *, name: str) -> None:
+        if name.strip().lower() == "list":
+            lib = PlaylistLibrary(self.bot.root_dir)
+            playlists = lib.list_playlists()
+            if not playlists:
+                return await ctx.send("📂 **No playlists saved yet.** Use `!favsave <name>` to create one!")
+            lines = ["📂 **Saved Playlists**"]
+            for p in playlists:
+                author_s = f" by {p['author']}" if p['author'] != "?" else ""
+                lines.append(f"`{p['name']}` — {p['tracks']} tracks{author_s}")
+            return await ctx.send("\n".join(lines))
         if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("Join a voice channel first!")
         lib = PlaylistLibrary(self.bot.root_dir)
@@ -843,6 +875,7 @@ class FavoritesCog(commands.Cog):
             (track["filepath"], track.get("collection_id") or state.collection_mode)
             for track in playlist.get("tracks", [])
         ]
+        import random
         random.shuffle(queued)
         state.queue = [filepath for filepath, _ in queued]
         state.queue_collection_ids = [collection_id for _, collection_id in queued]
@@ -852,6 +885,7 @@ class FavoritesCog(commands.Cog):
                 await ctx.voice_client.disconnect()
             await ctx.author.voice.channel.connect()
             state.voice_channel_id = ctx.author.voice.channel.id
+            await ctx.send(f"🎵 **Playing playlist `{playlist.get('name', name)}`!**")
             cog = self.bot.get_cog("PlaybackCog")
             if cog:
                 await cog._play_and_monitor(ctx, state)
