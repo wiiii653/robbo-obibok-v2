@@ -40,6 +40,14 @@ class ObibokBot(commands.Bot):
         self._states: dict[int, PlaybackState] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
         self._np_messages: dict[int, dict[str, Any]] = {}
+        self._np_messages_max = 200
+        self._reaction_users: dict[tuple[int, int], set[str]] = {}
+
+    def _track_np_message(self, msg_id: int, data: dict[str, Any]) -> None:
+        if len(self._np_messages) >= self._np_messages_max:
+            oldest = next(iter(self._np_messages))
+            del self._np_messages[oldest]
+        self._np_messages[msg_id] = data
 
     def get_state(self, guild_id: int) -> PlaybackState:
         if guild_id not in self._states:
@@ -139,10 +147,10 @@ class PlaybackCog(commands.Cog):
             total=len(state.queue),
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
-        self.bot._np_messages[msg.id] = {
+        self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
             "collection_id": state.collection_mode,
-        }
+        })
 
     @commands.command(aliases=["q"])
     async def queue(self, ctx: commands.Context, page: int = 0) -> None:
@@ -252,10 +260,10 @@ class PlaybackCog(commands.Cog):
             total=len(state.queue),
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
-        self.bot._np_messages[msg.id] = {
+        self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
             "collection_id": state.collection_mode,
-        }
+        })
 
 
 class CollectionCog(commands.Cog):
@@ -345,6 +353,9 @@ class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot = bot
 
+    def _reaction_key(self, msg_id: int, user_id: int) -> tuple[int, int]:
+        return (msg_id, user_id)
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.user_id == self.bot.user.id:
@@ -352,11 +363,16 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        self.bot.engine.toggle_favorite(
-            payload.user_id,
-            msg_data["filepath"],
-            msg_data["collection_id"],
-        )
+        key = self._reaction_key(payload.message_id, payload.user_id)
+        emojis = self.bot._reaction_users.setdefault(key, set())
+        was_empty = len(emojis) == 0
+        emojis.add(str(payload.emoji))
+        if was_empty:
+            self.bot.engine.toggle_favorite(
+                payload.user_id,
+                msg_data["filepath"],
+                msg_data["collection_id"],
+            )
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
@@ -365,11 +381,16 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        self.bot.engine.toggle_favorite(
-            payload.user_id,
-            msg_data["filepath"],
-            msg_data["collection_id"],
-        )
+        key = self._reaction_key(payload.message_id, payload.user_id)
+        emojis = self.bot._reaction_users.get(key, set())
+        emojis.discard(str(payload.emoji))
+        if not emojis:
+            self.bot._reaction_users.pop(key, None)
+            self.bot.engine.toggle_favorite(
+                payload.user_id,
+                msg_data["filepath"],
+                msg_data["collection_id"],
+            )
 
     @commands.command(aliases=["favs"])
     async def favorites(self, ctx: commands.Context) -> None:
