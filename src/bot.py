@@ -16,6 +16,7 @@ from .favorites import PlaylistLibrary
 from .models import PlaybackState
 from .monitor import TrackMonitor
 from .playback import PlaybackEngine
+from .stream import MonitorAudioSource
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class ObibokBot(commands.Bot):
         engine: PlaybackEngine,
         monitor: TrackMonitor,
         root_dir: str,
+        sink_name: str = "robbo_bot",
         command_prefix: str = "!",
         guild_id: int | None = None,
         auto_start_channel: str = "",
@@ -35,17 +37,20 @@ class ObibokBot(commands.Bot):
         intents.message_content = True
         intents.voice_states = True
         intents.reactions = True
-        intents.members = True
+        # NOTE: members intent requires manual enable in Discord Developer Portal
+        # intents.members = True
         super().__init__(command_prefix=command_prefix, intents=intents)
         self.engine = engine
         self.monitor = monitor
         self.root_dir = root_dir
+        self.sink_name = sink_name
         self.guild_id = guild_id
         self.auto_start_channel = auto_start_channel
         self.empty_timeout = empty_timeout
         self._states: dict[int, PlaybackState] = {}
+        self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
-        self._np_messages: dict[int, dict[str, Any]] = {}
+        self._active_streams: dict[int, MonitorAudioSource] = {}
         self._np_messages_max = 200
         self._reaction_users: dict[tuple[int, int], set[str]] = {}
 
@@ -54,6 +59,31 @@ class ObibokBot(commands.Bot):
             oldest = next(iter(self._np_messages))
             del self._np_messages[oldest]
         self._np_messages[msg_id] = data
+
+    def _start_stream(self, guild_id: int, voice_client: discord.VoiceClient) -> None:
+        """Start or restart the MonitorAudioSource on the given voice client."""
+        old = self._active_streams.pop(guild_id, None)
+        if old:
+            old.cleanup()
+        source = MonitorAudioSource(sink_name=self.sink_name)
+        source.source_id = id(source)
+        voice_client.play(
+            source,
+            after=lambda e: self._on_stream_end(guild_id, e, source.source_id),
+        )
+        self._active_streams[guild_id] = source
+
+    def _stop_stream(self, guild_id: int) -> None:
+        source = self._active_streams.pop(guild_id, None)
+        if source:
+            source.cleanup()
+
+    def _on_stream_end(self, guild_id: int, error: Exception | None, source_id: int) -> None:
+        if error:
+            logger.warning("Stream ended with error for guild %s: %s", guild_id, error)
+        current = self._active_streams.get(guild_id)
+        if current is not None and getattr(current, "source_id", None) == source_id:
+            self._active_streams.pop(guild_id, None)
 
     def get_state(self, guild_id: int) -> PlaybackState:
         if guild_id not in self._states:
@@ -73,10 +103,12 @@ class ObibokBot(commands.Bot):
         await super().process_commands(message)
 
     async def setup_hook(self) -> None:
-        self.add_cog(PlaybackCog(self))
-        self.add_cog(CollectionCog(self))
-        self.add_cog(FavoritesCog(self))
-        self.add_cog(ToolsCog(self))
+        # Remove default help command before registering custom one
+        self.remove_command("help")
+        await self.add_cog(PlaybackCog(self))
+        await self.add_cog(CollectionCog(self))
+        await self.add_cog(FavoritesCog(self))
+        await self.add_cog(ToolsCog(self))
 
 
 class PlaybackCog(commands.Cog):
@@ -174,6 +206,7 @@ class PlaybackCog(commands.Cog):
             return
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.stop(state)
+        self.bot._stop_stream(ctx.guild.id)
         task = self.bot._monitor_tasks.pop(ctx.guild.id, None)
         if task and not task.done():
             task.cancel()
@@ -291,9 +324,15 @@ class PlaybackCog(commands.Cog):
     async def _play_and_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
         if not ctx.guild:
             return
+        if not ctx.voice_client:
+            return
+
         task = self.bot._monitor_tasks.pop(ctx.guild.id, None)
         if task and not task.done():
             task.cancel()
+
+        # Start audio stream (restart if needed — handles voice reconnects)
+        self.bot._start_stream(ctx.guild.id, ctx.voice_client)
 
         track = await self.bot.engine.play_track(state)
         if not track:
@@ -308,6 +347,7 @@ class PlaybackCog(commands.Cog):
 
         async def on_empty() -> None:
             await self.bot.engine.stop(state)
+            self.bot._stop_stream(ctx.guild.id)
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
 

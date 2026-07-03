@@ -48,6 +48,7 @@ def create_bot(config: AppConfig) -> ObibokBot:
     root_dir = config.root_dir
 
     audio = AudioController(sink_name=config.audio.sink_name)
+    audio.setup()
     favorites = Favorites(root_dir)
     blacklist = Blacklist(root_dir)
     engine = PlaybackEngine(audio=audio, favorites=favorites, blacklist=blacklist, root_dir=root_dir)
@@ -57,6 +58,7 @@ def create_bot(config: AppConfig) -> ObibokBot:
         engine=engine,
         monitor=monitor,
         root_dir=root_dir,
+        sink_name=config.audio.sink_name,
         command_prefix=config.command_prefix,
         guild_id=config.guild_id,
         auto_start_channel=config.auto.start_channel,
