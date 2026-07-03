@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.favorites import Favorites
 from src.models import PlaybackState
 from src.playback import PlaybackEngine
@@ -34,17 +36,19 @@ class TestPlaybackEngine:
         assert engine.toggle_loop(state) is False
         assert state.is_looping is False
 
-    def test_stop(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_stop(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(is_playing=True)
-        engine.stop(state)
+        await engine.stop(state)
         assert state.is_playing is False
         engine.audio.stop.assert_called_once()
 
-    def test_clear(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_clear(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(queue=["a.sap", "b.sap"], position=1, is_playing=True)
-        engine.clear(state)
+        await engine.clear(state)
         assert state.queue == []
         assert state.position == 0
         assert state.is_playing is False
@@ -79,10 +83,11 @@ class TestPlaybackEngine:
         state = PlaybackState()
         assert engine.blacklist_current(1, state) is False
 
-    def test_play_track_no_track(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_play_track_no_track(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState()
-        assert engine.play_track(state) is None
+        assert await engine.play_track(state) is None
 
 
 class TestTrackEndBehavior:
@@ -95,17 +100,19 @@ class TestTrackEndBehavior:
         bl = Blacklist(str(tmp_path))
         return PlaybackEngine(audio=audio, favorites=favs, blacklist=bl, root_dir=str(tmp_path))
 
-    def test_skip_advances_position(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_skip_advances_position(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(queue=["a.sap", "b.sap", "c.sap"], position=0)
-        engine.skip_track(state)
+        await engine.skip_track(state)
         assert state.position == 1
 
-    def test_skip_returns_none_at_end(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_skip_returns_none_at_end(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(queue=["a.sap"], position=0)
         engine.audio.play.return_value = True
-        engine.play_track(state)
+        await engine.play_track(state)
         engine.audio.is_playing.return_value = False
-        result = engine.skip_track(state)
+        result = await engine.skip_track(state)
         assert result is None

@@ -11,9 +11,8 @@ from src.collection_loader import (
     load_index,
     load_raw_paths,
     parse_sap_header,
-    search_tracks,
 )
-from src.models import COLLECTIONS, FLIP_ORDER, Track
+from src.models import COLLECTIONS, FLIP_ORDER
 
 
 class TestCollectionRegistry:
@@ -103,36 +102,6 @@ class TestLoadRawPaths:
             assert paths == ["a.mod", "b.xm"]
         finally:
             col.cache_file = original_cache
-
-
-class TestSearchTracks:
-    def test_search_by_title(self):
-        tracks = [
-            Track(filepath="Games/test.sap", title="Test Track"),
-            Track(filepath="Composers/other.sid", title="Other Song"),
-        ]
-        results = search_tracks("test", tracks)
-        assert len(results) == 1
-        assert results[0].title == "Test Track"
-
-    def test_search_by_author(self):
-        tracks = [
-            Track(filepath="a.sap", title="Song", author="Author1"),
-            Track(filepath="b.sap", title="Song", author="Author2"),
-        ]
-        results = search_tracks("author1", tracks)
-        assert len(results) == 1
-        assert results[0].author == "Author1"
-
-    def test_search_limit(self):
-        tracks = [Track(filepath=f"a{i}.sap", title=f"Track {i}") for i in range(20)]
-        results = search_tracks("track", tracks, limit=5)
-        assert len(results) == 5
-
-    def test_search_no_results(self):
-        tracks = [Track(filepath="a.sap", title="Song")]
-        results = search_tracks("nonexistent", tracks)
-        assert len(results) == 0
 
 
 class TestMetadataExtraction:

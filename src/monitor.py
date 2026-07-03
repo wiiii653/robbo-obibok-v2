@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 GME_EXTENSIONS = {"nsf", "sap", "spc", "vgm", "vgz"}
 DEFAULT_TIMEOUT = 600
 GME_TIMEOUT = 600
-NORMAL_TIMEOUT = 300
 
 
 def is_gme_format(filepath: str) -> bool:

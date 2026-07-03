@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
-
 
 def now_playing_embed(
     title: str,
@@ -58,7 +53,6 @@ def status_embed(
     track_count: int,
     is_playing: bool,
     current_track: str = "",
-    guild_name: str = "",
 ) -> dict:
     return {
         "title": f"{collection_icon} {collection_name}",
@@ -68,12 +62,4 @@ def status_embed(
             {"name": "Tracks", "value": str(track_count), "inline": True},
         ],
         "description": f"Now playing: `{current_track}`" if current_track else "",
-    }
-
-
-def error_embed(message: str) -> dict:
-    return {
-        "title": "Error",
-        "description": message,
-        "color": 0xE74C3C,
     }

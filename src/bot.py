@@ -88,7 +88,7 @@ class PlaybackCog(commands.Cog):
             await ctx.voice_client.disconnect()
 
         await ctx.author.voice.channel.connect()
-        track = self.bot.engine.start_radio(state)
+        track = self.bot.engine.start_radio(state, user_id=ctx.author.id)
         if not track:
             return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
 
@@ -101,7 +101,7 @@ class PlaybackCog(commands.Cog):
         if not ctx.guild:
             return
         state = self.bot.get_state(ctx.guild.id)
-        self.bot.engine.stop(state)
+        await self.bot.engine.stop(state)
         task = self.bot._monitor_tasks.pop(ctx.guild.id, None)
         if task and not task.done():
             task.cancel()
@@ -114,7 +114,7 @@ class PlaybackCog(commands.Cog):
         if not ctx.guild:
             return
         state = self.bot.get_state(ctx.guild.id)
-        track = self.bot.engine.skip_track(state)
+        track = await self.bot.engine.skip_track(state)
         if not track:
             return await ctx.send("Queue empty.")
         await self._play_and_monitor(ctx, state)
@@ -194,7 +194,7 @@ class PlaybackCog(commands.Cog):
         if not ctx.guild:
             return
         state = self.bot.get_state(ctx.guild.id)
-        self.bot.engine.clear(state)
+        await self.bot.engine.clear(state)
         await ctx.send("Queue cleared.")
 
     @commands.command()
@@ -223,14 +223,14 @@ class PlaybackCog(commands.Cog):
         if task and not task.done():
             task.cancel()
 
-        track = self.bot.engine.play_track(state)
+        track = await self.bot.engine.play_track(state)
         if not track:
             return await ctx.send("Failed to play track.")
 
         await self._send_now_playing(ctx, state)
 
         async def on_track_end(s: PlaybackState) -> None:
-            next_t = self.bot.engine.skip_track(s)
+            next_t = await self.bot.engine.skip_track(s)
             if next_t:
                 await self._play_and_monitor(ctx, s)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -21,14 +22,14 @@ class PlaybackEngine:
     blacklist: Blacklist
     root_dir: str
 
-    def start_radio(self, state: PlaybackState, collection_id: str | None = None) -> str | None:
+    def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
         paths = load_raw_paths(state.collection_mode, self.root_dir)
         if not paths:
             return None
         state.tracks = paths
-        blacklist_tracks = self.blacklist.get_tracks(0)
+        blacklist_tracks = self.blacklist.get_tracks(user_id)
         filtered = [p for p in paths if p not in blacklist_tracks]
         state.queue = filtered
         import random
@@ -39,7 +40,7 @@ class PlaybackEngine:
             self.audio.set_collection_volume(state.collection_mode)
         return track
 
-    def play_track(self, state: PlaybackState) -> str | None:
+    async def play_track(self, state: PlaybackState) -> str | None:
         track = current_track(state)
         if not track:
             return None
@@ -47,7 +48,7 @@ class PlaybackEngine:
         if not col:
             return None
         full_path = f"{self.root_dir}/{col.archive_path}/{track}"
-        success = self.audio.play(full_path)
+        success = await asyncio.to_thread(self.audio.play, full_path)
         if success:
             state.current_track = track
             state.is_playing = True
@@ -57,29 +58,29 @@ class PlaybackEngine:
                 state.history = state.history[-20:]
         return track if success else None
 
-    def skip_track(self, state: PlaybackState) -> str | None:
+    async def skip_track(self, state: PlaybackState) -> str | None:
         track = next_track(state)
         if not track:
             return None
-        return self.play_track(state)
+        return await self.play_track(state)
 
-    def stop(self, state: PlaybackState) -> None:
-        self.audio.stop()
+    async def stop(self, state: PlaybackState) -> None:
+        await asyncio.to_thread(self.audio.stop)
         state.is_playing = False
 
-    def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
+    async def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
         track = jump_to(state, index)
         if not track:
             return None
-        return self.play_track(state)
+        return await self.play_track(state)
 
     def toggle_loop(self, state: PlaybackState) -> bool:
         state.is_looping = not state.is_looping
         return state.is_looping
 
-    def clear(self, state: PlaybackState) -> None:
+    async def clear(self, state: PlaybackState) -> None:
         clear_queue(state)
-        self.audio.stop()
+        await asyncio.to_thread(self.audio.stop)
         state.is_playing = False
 
     def search(self, query: str, state: PlaybackState) -> list[str]:
