@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 from .models import PlaybackState
 from .persistence import load_json, save_json
-
-
-def shuffle_queue(state: PlaybackState) -> None:
-    queue = list(state.tracks)
-    random.shuffle(queue)
-    state.queue = queue
-    state.position = 0
 
 
 def next_track(state: PlaybackState) -> str | None:
@@ -23,9 +15,7 @@ def next_track(state: PlaybackState) -> str | None:
         return state.queue[state.position]
     state.position += 1
     if state.position >= len(state.queue):
-        if not state.is_looping:
-            return None
-        state.position = 0
+        return None
     return state.queue[state.position]
 
 

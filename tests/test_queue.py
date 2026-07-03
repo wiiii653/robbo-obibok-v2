@@ -12,21 +12,7 @@ from src.queue import (
     next_track,
     restore_queue,
     save_queue,
-    shuffle_queue,
 )
-
-
-class TestShuffleQueue:
-    def test_shuffle_populates_queue(self):
-        state = PlaybackState(tracks=["a.sap", "b.sap", "c.sap"])
-        shuffle_queue(state)
-        assert len(state.queue) == 3
-        assert state.position == 0
-
-    def test_shuffle_preserves_all_tracks(self):
-        state = PlaybackState(tracks=["a.sap", "b.sap", "c.sap"])
-        shuffle_queue(state)
-        assert sorted(state.queue) == sorted(state.tracks)
 
 
 class TestNextTrack:

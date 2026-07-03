@@ -42,18 +42,6 @@ def get_collection(collection_id: str) -> Collection | None:
     return COLLECTIONS.get(collection_id)
 
 
-def search_tracks(query: str, tracks: list[Track], limit: int = 10) -> list[Track]:
-    query_lower = query.lower()
-    results: list[Track] = []
-    for track in tracks:
-        searchable = f"{track.title} {track.author} {track.filepath}".lower()
-        if query_lower in searchable:
-            results.append(track)
-            if len(results) >= limit:
-                break
-    return results
-
-
 def parse_sap_header(filepath: str) -> dict[str, str]:
     try:
         with open(filepath, "rb") as f:
@@ -109,10 +97,3 @@ def extract_metadata(filepath: str, collection_id: str) -> dict[str, str]:
     if ext in ("mod", "xm", "s3m", "it"):
         return parse_mod_header(filepath)
     return {}
-
-
-def ensure_archives(root_dir: str = ".") -> None:
-    root = Path(root_dir)
-    for col in COLLECTIONS.values():
-        archive_dir = root / col.archive_path
-        archive_dir.mkdir(parents=True, exist_ok=True)
