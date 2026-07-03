@@ -455,3 +455,72 @@ class ToolsCog(commands.Cog):
     \\_________/
         """
         await ctx.send(f"```\n{owl}\n```")
+
+    @commands.command()
+    async def help(self, ctx: commands.Context, command: str = "") -> None:
+        embed = discord.Embed(title="Robbo Obibok v2 — Commands", color=0x2ECC71)
+
+        embed.add_field(
+            name="Playback",
+            value=(
+                "`!play` / `!pl` — Start shuffled radio\n"
+                "`!play <query>` — Search and play\n"
+                "`!play <number>` — Play from search results\n"
+                "`!stop` / `!st` — Stop and disconnect\n"
+                "`!skip` / `!next` / `!nt` — Skip to next\n"
+                "`!jump <n>` — Jump to track N\n"
+                "`!np` — Now playing info\n"
+                "`!queue` / `!q` — Show queue\n"
+                "`!history` — Last 10 tracks\n"
+                "`!sleep <min>` — Stop after N minutes\n"
+                "`!loop` — Toggle repeat\n"
+                "`!volume <0-200>` — Set volume\n"
+                "`!clear` — Clear queue"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Collections",
+            value=(
+                "`!flip` / `!fl` — Rotate collection\n"
+                "`!status` — Current collection info\n"
+                "`!search <query>` — Search tracks\n"
+                "`!hvsc` / `!c64` — C64 SID (60k+)\n"
+                "`!asma` — Atari SAP (6k+)\n"
+                "`!mod` — ModArchive (175k+)\n"
+                "`!ay` / `!zx` — ZX Spectrum AY (4k+)\n"
+                "`!ym` / `!atarist` — Atari ST YM (7k+)\n"
+                "`!tiny` / `!tm` — Tiny Music (550)\n"
+                "`!kgen` / `!k` — Keygen Music (4.8k)"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Favorites & Blacklist",
+            value=(
+                "`!favorites` / `!favs` — Show favorites\n"
+                "`!favplay` / `!fp` — Play favorites\n"
+                "`!favsave` <name> — Save as playlist\n"
+                "`!favload` <name> — Load playlist\n"
+                "`!playlists` / `!plist` — List playlists\n"
+                "`!blk` — Blacklist current track\n"
+                "`!blks` — Show blacklist\n"
+                "`!blkrm <n>` — Remove from blacklist"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Tools",
+            value=(
+                "`!stats` — Radio statistics\n"
+                "`!export` — Export queue as text\n"
+                "`!ocko` — ASCII owl"
+            ),
+            inline=False,
+        )
+
+        embed.set_footer(text="React to Now Playing embeds to save favorites!")
+        await ctx.send(embed=embed)
