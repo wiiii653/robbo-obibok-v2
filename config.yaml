@@ -27,3 +27,11 @@ archive:
 auto:
   start_channel: "Chiptune Radio"  # voice channel name to auto-start (empty = disabled)
   empty_timeout: 60  # seconds before disconnect when channel is empty
+
+# Per-format volume overrides (extension → volume percentage, default: 100)
+format_volumes:
+  sid: 115
+  mod: 115
+  xm: 115
+  s3m: 115
+  it: 115

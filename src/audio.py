@@ -9,19 +9,12 @@ import subprocess
 import time
 from dataclasses import dataclass
 
-from .models import COLLECTIONS
-
 logger = logging.getLogger(__name__)
 
 MIN_VOLUME = 0
 MAX_VOLUME = 200
 
-COLLECTION_VOLUMES: dict[str, int] = {
-    col.id: col.volume for col in COLLECTIONS.values()
-}
-
-# Format-based volume override — takes precedence over collection volumes.
-# Extension → volume percentage (default: 100)
+# Format-based volume — extension → volume percentage (default: 100)
 FORMAT_VOLUMES: dict[str, int] = {
     "sid": 115,
     "mod": 115,
@@ -175,18 +168,17 @@ def set_volume(sink_name: str, volume: int) -> None:
     )
 
 
-def set_volume_for_collection(collection_id: str, sink_name: str) -> None:
-    vol = COLLECTION_VOLUMES.get(collection_id, 100)
-    set_volume(sink_name, vol)
-    logger.info("Volume set to %d%% for collection %s", vol, collection_id)
-
-
 def set_volume_for_playback(filepath: str, sink_name: str) -> None:
     """Set volume based on the file extension (format-based volume)."""
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
     vol = FORMAT_VOLUMES.get(ext, 100)
     set_volume(sink_name, vol)
     logger.info("Volume set to %d%% for format .%s", vol, ext if ext else "?")
+
+
+def load_format_volumes_from_dict(volumes: dict[str, int]) -> None:
+    """Update FORMAT_VOLUMES from a user config dict (merges over defaults)."""
+    FORMAT_VOLUMES.update({k: int(v) for k, v in volumes.items()})
 
 
 def enable_compressor() -> None:
@@ -291,9 +283,6 @@ class AudioController:
 
     def set_volume(self, volume: int) -> None:
         set_volume(self.sink_name, volume)
-
-    def set_collection_volume(self, collection_id: str) -> None:
-        set_volume_for_collection(collection_id, self.sink_name)
 
     def set_volume_for_playback(self, filepath: str) -> None:
         set_volume_for_playback(filepath, self.sink_name)

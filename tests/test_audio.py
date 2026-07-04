@@ -6,8 +6,9 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 from src.audio import (
-    COLLECTION_VOLUMES,
     AudioController,
+    FORMAT_VOLUMES,
+    load_format_volumes_from_dict,
     get_volume,
     is_playing,
     output_length,
@@ -15,20 +16,29 @@ from src.audio import (
     set_volume,
     song_length,
 )
-from src.models import COLLECTIONS
 
 
-class TestCollectionVolumes:
-    def test_all_collections_have_volumes(self):
-        for col_id in COLLECTIONS:
-            assert col_id in COLLECTION_VOLUMES
+class TestFormatVolumes:
+    def test_sid_volume_is_115(self):
+        assert FORMAT_VOLUMES["sid"] == 115
 
-    def test_hvsc_volume_is_120(self):
-        assert COLLECTION_VOLUMES["hvsc"] == 120
+    def test_mod_volume_is_115(self):
+        assert FORMAT_VOLUMES["mod"] == 115
 
-    def test_others_are_100(self):
-        for col_id in ["asma", "modarchive", "ay", "ym", "tiny", "kgen"]:
-            assert COLLECTION_VOLUMES[col_id] == 100
+    def test_others_default_to_100(self):
+        assert FORMAT_VOLUMES.get("sap", 100) == 100
+        assert FORMAT_VOLUMES.get("ay", 100) == 100
+        assert FORMAT_VOLUMES.get("ym", 100) == 100
+
+    def test_load_format_volumes_from_dict_merges(self):
+        old = dict(FORMAT_VOLUMES)
+        load_format_volumes_from_dict({"sid": 200, "sap": 150})
+        assert FORMAT_VOLUMES["sid"] == 200
+        assert FORMAT_VOLUMES["sap"] == 150
+        assert FORMAT_VOLUMES["mod"] == old["mod"]  # unchanged
+        # Cleanup
+        FORMAT_VOLUMES.clear()
+        FORMAT_VOLUMES.update(old)
 
 
 class TestVolumeControl:
@@ -159,11 +169,11 @@ class TestAudioController:
         ctrl.set_volume(150)
         mock_vol.assert_called_once_with("test_sink", 150)
 
-    @patch("src.audio.set_volume_for_collection")
-    def test_controller_set_collection_volume(self, mock_vol):
+    @patch("src.audio.set_volume_for_playback")
+    def test_controller_set_volume_for_playback(self, mock_vol):
         ctrl = AudioController(sink_name="test_sink")
-        ctrl.set_collection_volume("hvsc")
-        mock_vol.assert_called_once_with("hvsc", "test_sink")
+        ctrl.set_volume_for_playback("/path/to/track.sid")
+        mock_vol.assert_called_once_with("/path/to/track.sid", "test_sink")
 
 
 class TestSinkManagement:
@@ -313,11 +323,27 @@ class TestPlayerLifecycle:
 
 
 class TestAudioConfig:
-    def test_set_volume_for_collection(self):
-        from src.audio import set_volume_for_collection
+    def test_set_volume_for_playback_sid(self):
+        from src.audio import set_volume_for_playback
         with patch("src.audio.set_volume") as mock_set:
-            set_volume_for_collection("hvsc", "test_sink")
-            mock_set.assert_called_with('test_sink', 120)
+            set_volume_for_playback("track.sid", "test_sink")
+            mock_set.assert_called_with('test_sink', 115)
+
+    def test_set_volume_for_playback_other(self):
+        from src.audio import set_volume_for_playback
+        with patch("src.audio.set_volume") as mock_set:
+            set_volume_for_playback("track.ay", "test_sink")
+            mock_set.assert_called_with('test_sink', 100)
+
+    def test_load_format_volumes_from_dict(self):
+        from src.audio import FORMAT_VOLUMES, load_format_volumes_from_dict
+        old = dict(FORMAT_VOLUMES)
+        load_format_volumes_from_dict({"sid": 50, "sap": 75})
+        assert FORMAT_VOLUMES["sid"] == 50
+        assert FORMAT_VOLUMES["sap"] == 75
+        assert FORMAT_VOLUMES["mod"] == old["mod"]
+        FORMAT_VOLUMES.clear()
+        FORMAT_VOLUMES.update(old)
 
     @patch("src.audio._audtool_call")
     def test_enable_compressor(self, mock_tool):
