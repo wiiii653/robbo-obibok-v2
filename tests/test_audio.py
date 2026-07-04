@@ -350,7 +350,7 @@ class TestAudioConfig:
         mock_tool.return_value = True
         from src.audio import enable_compressor
         enable_compressor()
-        mock_tool.assert_called_with("plugin-enable", "compressor", "TRUE")
+        mock_tool.assert_called_with("plugin-enable", "compressor", "on")
 
     @patch("src.audio._audtool_call")
     def test_setup_sid_config(self, mock_tool):
