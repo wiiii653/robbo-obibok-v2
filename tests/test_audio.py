@@ -6,11 +6,11 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 from src.audio import (
-    AudioController,
     FORMAT_VOLUMES,
-    load_format_volumes_from_dict,
+    AudioController,
     get_volume,
     is_playing,
+    load_format_volumes_from_dict,
     output_length,
     play_file,
     set_volume,
@@ -235,8 +235,8 @@ class TestPlayerLifecycle:
         proc.poll.return_value = None
         mock_popen.return_value = proc
         mock_tool.return_value = False
-        from src.audio import start_player
         import src.audio
+        from src.audio import start_player
 
         src.audio._audacious_ready = False
 
@@ -266,8 +266,8 @@ class TestPlayerLifecycle:
     def test_ensure_audacious_alive(self, mock_tool, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="1234")
         mock_tool.return_value = True
-        from src.audio import ensure_audacious, _audacious_ready
         import src.audio
+        from src.audio import ensure_audacious
         src.audio._audacious_ready = True
         ensure_audacious()
         assert mock_tool.call_count >= 1
@@ -282,8 +282,8 @@ class TestPlayerLifecycle:
         ]
         mock_tool.side_effect = [True]
         mock_start.return_value = True
-        from src.audio import ensure_audacious
         import src.audio
+        from src.audio import ensure_audacious
         src.audio._audacious_ready = True
         ensure_audacious()
 

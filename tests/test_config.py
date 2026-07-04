@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.config import AppConfig, AudioConfig, AutoConfig, PlaybackConfig, load_config
 
 
