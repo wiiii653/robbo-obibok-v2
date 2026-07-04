@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from .collection_loader import get_collection
 
+
 class ToolsCog(commands.Cog):
     def __init__(self, bot) -> None:
         self.bot = bot

@@ -19,8 +19,8 @@ CONSOLE_TIMEOUT = 600
 def is_console_format(filepath: str) -> bool:
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
     return ext in CONSOLE_EXTENSIONS
- 
- 
+
+
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
     if is_console_format:
         return CONSOLE_TIMEOUT

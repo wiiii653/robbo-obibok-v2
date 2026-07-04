@@ -8,6 +8,7 @@ from discord.ext import commands
 from .collection_loader import flip_collection, get_collection, load_raw_paths
 from .embeds import status_embed
 
+
 class CollectionCog(commands.Cog):
     def __init__(self, bot) -> None:
         self.bot = bot

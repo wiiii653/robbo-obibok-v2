@@ -303,7 +303,6 @@ class TestMonitorTickBranches:
         })()
         monitor = TrackMonitor(audio=audio)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
-        loop_started = False
 
         async def on_end(s):
             pass

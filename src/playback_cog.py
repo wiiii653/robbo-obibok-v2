@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 
 import discord
@@ -11,9 +10,10 @@ from discord.ext import commands
 
 from .cog_shared import FAVORITE_EMOJI, logger
 from .collection_loader import get_collection, load_raw_paths
-from .embeds import now_playing_embed
+from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
 from .remote import is_remote_track
+
 
 class PlaybackCog(commands.Cog):
     def __init__(self, bot) -> None:

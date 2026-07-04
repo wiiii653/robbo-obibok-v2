@@ -11,6 +11,7 @@ from .cog_shared import FAVORITE_EMOJI
 from .collection_loader import resolve_collection_for_filepath
 from .favorites import PlaylistLibrary
 
+
 class FavoritesCog(commands.Cog):
     def __init__(self, bot) -> None:
         self.bot = bot

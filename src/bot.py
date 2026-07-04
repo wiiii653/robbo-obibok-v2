@@ -9,6 +9,7 @@ from typing import Any
 import discord
 from discord.ext import commands
 
+from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
 from .lease import PlaybackLease
 from .models import PlaybackState
 from .stream import MonitorAudioSource
@@ -114,7 +115,6 @@ class ObibokBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         self.remove_command("help")
-        from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
 
         await self.add_cog(PlaybackCog(self))
         await self.add_cog(CollectionCog(self))
@@ -157,5 +157,4 @@ class ObibokBot(commands.Bot):
                 logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
 
 
-from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
 
