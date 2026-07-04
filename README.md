@@ -21,7 +21,7 @@ Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-gard
 
 ## What's New in v2
 
-Complete rewrite with a **flat, minimal architecture** — 13 source modules instead of 76, 145 tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
+Complete rewrite with a **flat, minimal architecture** — 16 source modules instead of 76, 150+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
 
 ## Features
 
@@ -31,11 +31,15 @@ Complete rewrite with a **flat, minimal architecture** — 13 source modules ins
 - ❤️ **Favorites playlist** — react to any Now Playing embed to save/remove tracks
 - ⏭️ **Skip**, **Stop**, **Now Playing**, **Stats**, **Search**
 - 🔄 **Auto-advance** — moves to next track when current ends, with GME-aware monitoring
-- 💾 **Queue persistence** — saves/restores queue across restarts
+- 🧩 **Subsong playback** — demoscene/module tracks advance through embedded parts
+- 💾 **Queue persistence** — restores compatible queues across restarts
+- 🌐 **Remote playback cache** — direct URLs are downloaded into `var/downloads/` before playback
 - 📻 **Auto-start** — starts playing when someone joins a configured voice channel
-- 🌙 **Auto-stop** — disconnects after channel is empty for a timeout
-- ⚙️ **Configurable** via `config.yaml`
+- 🌙 **Auto-stop** — disconnects after the channel is empty for `auto.empty_timeout`
+- 🛡️ **Playback lease + watchdog** — one guild owns playback at a time, with automatic audio recovery
+- ⚙️ **Configurable** via `config.yaml`, including the archive root path
 - 📀 **Local archives** — all collections served from disk, no remote crawling at runtime
+- 🧭 **Richer monitor heuristics** — output-drop confirmation and format-aware timeout handling
 
 ## Commands
 
@@ -43,7 +47,7 @@ Complete rewrite with a **flat, minimal architecture** — 13 source modules ins
 |---------|-------------|
 | **Playback** | |
 | `!play` / `!pl` | Start shuffled radio from current collection |
-| `!play <query>` | Search and play first matching track |
+| `!play <query>` | Search, or play a direct URL, and immediately start the first match |
 | `!play <number>` | Play a track from last search results |
 | `!stop` / `!st` | Stop playback and disconnect |
 | `!skip` / `!next` / `!nt` | Skip to next track |
@@ -202,6 +206,7 @@ python scripts/build_modarchive_index.py  # indexes ModArchive modules
 ```
 
 These generate `*_cache_local.json` files for instant startup — no crawling at runtime.
+Collection files are resolved under the configurable `archive.path` root.
 
 ## Configuration
 
@@ -213,13 +218,9 @@ command_prefix: "!"
 # guild_id: 123456789012345678
 audio:
   sink_name: "robbo_bot"
-  sample_rate: 48000
-  channels: 2
-  format: "s16le"
 playback:
-  loop: true
+  loop: false           # true repeats the current track
   shuffle: true
-  crossfade: 0
 archive:
   path: "archiwum"
 auto:
@@ -231,21 +232,24 @@ auto:
 
 ```
 robbo-obibok-v2/
-├── src/                     # Source modules (13 files)
-│   ├── models.py            # Track, Collection, PlaybackState
+├── src/                     # Source modules (16 files)
+│   ├── models.py            # Collection and PlaybackState
 │   ├── persistence.py       # JSON file I/O
 │   ├── collection_loader.py # Collection registry, index loaders, metadata
 │   ├── audio.py             # PulseAudio + Audacious control
 │   ├── queue.py             # Queue shuffle, blacklist, persistence
 │   ├── favorites.py         # Reaction favorites + named playlists
 │   ├── playback.py          # Playback orchestrator
+│   ├── subsong.py           # Subsong detection + conversion
+│   ├── lease.py             # Single-guild playback ownership
 │   ├── monitor.py           # Track completion detection
+│   ├── remote.py            # Remote download + cache helpers
 │   ├── embeds.py            # Discord rich embed builders
 │   ├── bot.py               # Discord bot commands + events
 │   ├── config.py            # YAML config loading
 │   ├── launcher.py          # Startup, signals, shutdown
 │   └── __main__.py          # python -m src entry point
-├── tests/                   # 145 unit tests
+├── tests/                   # 150+ unit tests
 ├── scripts/                 # Index builder scripts
 ├── deploy/                  # systemd service files
 ├── extras/                  # Assets (banner, avatar)

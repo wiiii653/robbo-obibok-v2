@@ -5,21 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .models import COLLECTIONS, FLIP_ORDER, Collection, Track
+from .models import COLLECTIONS, FLIP_ORDER, Collection
 from .persistence import load_tracks_from_cache
 
 SAP_LINE_RE = re.compile(rb"^([A-Z]+)\s+(.+)")
-
-
-def load_index(collection_id: str, root_dir: str = ".") -> list[Track] | None:
-    col = COLLECTIONS.get(collection_id)
-    if not col:
-        return None
-    cache_path = Path(root_dir) / col.cache_file
-    paths = load_tracks_from_cache(cache_path)
-    if not paths:
-        return None
-    return [Track.from_cache_entry({"path": p}, collection_id) for p in paths]
 
 
 def load_raw_paths(collection_id: str, root_dir: str = ".") -> list[str] | None:

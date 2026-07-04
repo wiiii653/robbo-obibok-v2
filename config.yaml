@@ -13,15 +13,11 @@ guild_id: 1470009221117382689
 # Audio settings
 audio:
   sink_name: "robbo_bot"
-  sample_rate: 48000
-  channels: 2
-  format: "s16le"
 
 # Playback
 playback:
-  loop: true
+  loop: false  # true repeats the current track
   shuffle: true
-  crossfade: 0
 
 # Archive storage path (relative to project root)
 archive:

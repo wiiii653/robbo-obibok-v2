@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from src.favorites import Favorites, PlaylistLibrary
 
 
@@ -44,6 +46,14 @@ class TestFavorites:
         assert favs2.has_track(1, "test.sap") is True
         assert favs2.count(1) == 1
 
+    def test_ignores_malformed_entries(self, tmp_path):
+        path = tmp_path / "favorites.json"
+        path.write_text(json.dumps({"1": [{"filepath": "ok.sap"}, {"bad": True}]}))
+        favs = Favorites(str(tmp_path))
+        tracks = favs.get_tracks(1)
+        assert len(tracks) == 1
+        assert tracks[0]["filepath"] == "ok.sap"
+
     def test_user_isolation(self, tmp_path):
         favs = Favorites(str(tmp_path))
         favs.toggle(1, "a.sap")
@@ -51,6 +61,14 @@ class TestFavorites:
         assert favs.count(1) == 1
         assert favs.count(2) == 1
         assert favs.has_track(1, "b.sap") is False
+
+    def test_same_path_in_different_collections_is_distinct(self, tmp_path):
+        favs = Favorites(str(tmp_path))
+        assert favs.toggle(1, "song.mod", collection_id="tiny") is True
+        assert favs.toggle(1, "song.mod", collection_id="kgen") is True
+        assert favs.count(1) == 2
+        assert favs.has_track(1, "song.mod", "tiny") is True
+        assert favs.has_track(1, "song.mod", "kgen") is True
 
 
 class TestPlaylistLibrary:
@@ -86,6 +104,19 @@ class TestPlaylistLibrary:
     def test_load_nonexistent(self, tmp_path):
         lib = PlaylistLibrary(str(tmp_path))
         assert lib.load("Nope") is None
+
+    def test_load_ignores_malformed_tracks(self, tmp_path):
+        lib = PlaylistLibrary(str(tmp_path))
+        path = tmp_path / "var" / "playlists" / "My Playlist.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "name": "My Playlist",
+            "author": "User",
+            "tracks": [{"filepath": "ok.sap"}, {"bad": True}],
+        }))
+        loaded = lib.load("My Playlist")
+        assert loaded is not None
+        assert len(loaded["tracks"]) == 1
 
     def test_safe_name(self, tmp_path):
         lib = PlaylistLibrary(str(tmp_path))

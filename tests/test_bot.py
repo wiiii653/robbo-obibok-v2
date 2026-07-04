@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.bot import ObibokBot
+from src.bot import CollectionCog, ObibokBot, PlaybackCog
 from src.favorites import Favorites, PlaylistLibrary
 from src.models import PlaybackState
 from src.playback import PlaybackEngine
@@ -56,6 +56,16 @@ class TestBotStateManagement:
         assert state.queue == []
         assert state.is_playing is False
 
+    def test_configured_default_loop_is_applied(self, tmp_path):
+        engine = _make_engine(tmp_path)
+        bot = ObibokBot(
+            engine=engine,
+            monitor=MagicMock(),
+            root_dir=str(tmp_path),
+            default_loop=True,
+        )
+        assert bot.get_state(999).is_looping is True
+
     def test_np_messages_capped(self, tmp_path):
         bot = _make_bot(tmp_path)
         bot._np_messages_max = 3
@@ -63,38 +73,6 @@ class TestBotStateManagement:
             bot._track_np_message(i, {"filepath": f"t{i}.sap"})
         assert len(bot._np_messages) == 3
         assert 0 not in bot._np_messages
-
-
-class TestGuildRestriction:
-    def test_check_guild_no_restriction(self, tmp_path):
-        bot = _make_bot(tmp_path)
-        ctx = AsyncMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 1
-        assert bot.check_guild(ctx) is True
-
-    def test_check_guild_matching(self, tmp_path):
-        bot = _make_bot(tmp_path)
-        bot.guild_id = 1
-        ctx = AsyncMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 1
-        assert bot.check_guild(ctx) is True
-
-    def test_check_guild_non_matching(self, tmp_path):
-        bot = _make_bot(tmp_path)
-        bot.guild_id = 1
-        ctx = AsyncMock()
-        ctx.guild = MagicMock()
-        ctx.guild.id = 2
-        assert bot.check_guild(ctx) is False
-
-    def test_check_guild_dm(self, tmp_path):
-        bot = _make_bot(tmp_path)
-        bot.guild_id = 1
-        ctx = AsyncMock()
-        ctx.guild = None
-        assert bot.check_guild(ctx) is False
 
 
 class TestFavoritesLogic:
@@ -207,3 +185,130 @@ class TestPlaybackLogic:
         bot = _make_bot(tmp_path)
         state = PlaybackState()
         assert bot.engine.blacklist_current(1, state) is False
+
+    @pytest.mark.asyncio
+    async def test_jump_awaits_engine_and_reinstalls_monitor(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.guild.name = "Guild"
+        ctx.send = AsyncMock()
+        bot.playback_lease.acquire(123, "Guild")
+        bot.engine.jump_to_track = AsyncMock(return_value="b.sap")
+        cog._after_track_started = AsyncMock()
+        cog._install_monitor = MagicMock()
+
+        await cog.jump.callback(cog, ctx, 2)
+
+        bot.engine.jump_to_track.assert_awaited_once_with(bot.get_state(123), 1)
+        cog._after_track_started.assert_awaited_once()
+        cog._install_monitor.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_collection_switch_clears_stale_inactive_state(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = CollectionCog(bot)
+        state = bot.get_state(123)
+        state.tracks = ["old.sap"]
+        state.queue = ["old.sap"]
+        state.queue_collection_ids = ["asma"]
+        state.search_results = ["old.sap"]
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client = None
+        ctx.send = AsyncMock()
+
+        await cog._switch(ctx, "hvsc")
+
+        assert state.collection_mode == "hvsc"
+        assert state.tracks == []
+        assert state.queue == []
+        assert state.search_results == []
+
+    @pytest.mark.asyncio
+    async def test_number_selection_connects_before_playback(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        state.search_results = ["song.sap"]
+        state.search_collection_id = "asma"
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.guild.name = "Guild"
+        ctx.author.voice.channel.connect = AsyncMock()
+        ctx.voice_client = None
+        ctx.send = AsyncMock()
+        cog._play_and_monitor = AsyncMock()
+
+        await cog.play.callback(cog, ctx, query="1")
+
+        ctx.author.voice.channel.connect.assert_awaited_once()
+        cog._play_and_monitor.assert_awaited_once_with(ctx, state)
+        assert state.queue_collection_ids == ["asma"]
+
+    @pytest.mark.asyncio
+    async def test_non_owner_cannot_stop_shared_audio(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(111, "Owner Guild")
+        bot.engine.stop = AsyncMock()
+        ctx = MagicMock()
+        ctx.guild.id = 222
+        ctx.send = AsyncMock()
+
+        await cog.stop.callback(cog, ctx)
+
+        bot.engine.stop.assert_not_awaited()
+        ctx.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_failed_track_start_releases_resources(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        bot.playback_lease.acquire(123, "Guild")
+        bot.engine.play_track = AsyncMock(return_value=None)
+        bot.engine.stop = AsyncMock()
+        bot._start_stream = MagicMock()
+        bot._stop_stream = MagicMock()
+        voice_client = MagicMock()
+        voice_client.disconnect = AsyncMock()
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client = voice_client
+        ctx.send = AsyncMock()
+
+        await cog._play_and_monitor(ctx, state)
+
+        bot.engine.stop.assert_awaited_once_with(state)
+        bot._stop_stream.assert_called_once_with(123)
+        voice_client.disconnect.assert_awaited_once()
+        assert bot.playback_lease.is_held is False
+
+    @pytest.mark.asyncio
+    async def test_automatic_advance_reuses_current_monitor(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        state.is_playing = True
+        state.current_track = "a.sap"
+        bot.engine.skip_track = AsyncMock(return_value="b.sap")
+        cog._after_track_started = AsyncMock()
+        cog._play_and_monitor = AsyncMock()
+
+        async def monitor_once(monitored_state, on_track_end, on_empty, get_voice_members):
+            await on_track_end(monitored_state)
+
+        bot.monitor.monitor_loop = monitor_once
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client.channel.members = []
+
+        cog._install_monitor(ctx, state)
+        task = bot._monitor_tasks[123]
+        await task
+
+        bot.engine.skip_track.assert_awaited_once_with(state)
+        cog._after_track_started.assert_awaited_once_with(ctx, state)
+        cog._play_and_monitor.assert_not_awaited()

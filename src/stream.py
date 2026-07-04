@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable
 
 import discord
 
@@ -24,15 +22,9 @@ class MonitorAudioSource(discord.AudioSource):
         self,
         *,
         sink_name: str,
-        audio_format: str = "s16le",
-        sample_rate: int = 48000,
-        channels: int = 2,
     ) -> None:
         self.buffer = b""
         self.sink_name = sink_name
-        self.audio_format = audio_format
-        self.sample_rate = sample_rate
-        self.channels = channels
         self.process = self._start_ffmpeg()
         self._restart_count = 0
         self._last_restart_ts = 0.0
@@ -49,11 +41,11 @@ class MonitorAudioSource(discord.AudioSource):
                 "-i",
                 f"{self.sink_name}.monitor",
                 "-f",
-                self.audio_format,
+                "s16le",
                 "-ar",
-                str(self.sample_rate),
+                "48000",
                 "-ac",
-                str(self.channels),
+                "2",
                 "pipe:1",
             ],
             stdout=subprocess.PIPE,

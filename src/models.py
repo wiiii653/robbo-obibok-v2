@@ -6,29 +6,6 @@ from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
-class Track:
-    filepath: str
-    title: str = ""
-    author: str = ""
-    copyright: str = ""
-    collection_id: str = ""
-    file_ext: str = ""
-    size: int = 0
-
-    @classmethod
-    def from_cache_entry(cls, entry: dict, collection_id: str) -> Track:
-        filepath = entry.get("path", "")
-        ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
-        return cls(
-            filepath=filepath,
-            title=entry.get("name", filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0]),
-            collection_id=collection_id,
-            file_ext=ext,
-            size=entry.get("size", 0),
-        )
-
-
-@dataclass(slots=True)
 class Collection:
     id: str
     name: str
@@ -48,7 +25,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="hvsc",
         name="C64 SID (HVSC)",
         extensions=["sid"],
-        archive_path="archiwum/hvsc/C64Music",
+        archive_path="hvsc/C64Music",
         cache_file="hvsc_cache_local.json",
         volume=120,
         flip_tag="🟣HVSC",
@@ -59,7 +36,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="asma",
         name="Atari SAP (ASMA)",
         extensions=["sap"],
-        archive_path="archiwum/asma",
+        archive_path="asma",
         cache_file="asma_cache_local.json",
         volume=100,
         flip_tag="🟢ASMA",
@@ -70,7 +47,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="modarchive",
         name="Tracker Modules (ModArchive)",
         extensions=["mod", "xm", "s3m", "it"],
-        archive_path="archiwum/modarchive",
+        archive_path="modarchive",
         cache_file="modarchive_cache_local.json",
         volume=100,
         flip_tag="🟠Mod",
@@ -81,7 +58,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="ay",
         name="ZX Spectrum AY",
         extensions=["ay"],
-        archive_path="archiwum/ay",
+        archive_path="ay",
         cache_file="ay_cache_local.json",
         volume=100,
         flip_tag="🔵AY",
@@ -92,7 +69,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="ym",
         name="Atari ST YM",
         extensions=["ym"],
-        archive_path="archiwum/ym",
+        archive_path="ym",
         cache_file="ym_cache_local.json",
         volume=100,
         flip_tag="🎹YM",
@@ -103,7 +80,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="tiny",
         name="Tiny Music (Demoscene)",
         extensions=["mod", "xm", "it", "s3m", "med", "dmf"],
-        archive_path="archiwum/tiny",
+        archive_path="tiny",
         cache_file="tiny_cache_local.json",
         volume=100,
         flip_tag="🎵Tiny",
@@ -114,7 +91,7 @@ COLLECTIONS: dict[str, Collection] = {
         id="kgen",
         name="Keygen Music",
         extensions=["mod", "xm", "it", "s3m"],
-        archive_path="archiwum/kgen",
+        archive_path="kgen",
         cache_file="kgen_cache_local.json",
         volume=100,
         flip_tag="🔊KGen",
@@ -130,12 +107,20 @@ class PlaybackState:
     collection_mode: str = "asma"
     tracks: list[str] = field(default_factory=list)
     queue: list[str] = field(default_factory=list)
+    queue_collection_ids: list[str] = field(default_factory=list)
     position: int = 0
     current_track: str = ""
+    current_collection_id: str = ""
     is_playing: bool = False
     is_looping: bool = False
-    loaded_collection: str = ""
     voice_channel_id: int | None = None
     history: list[str] = field(default_factory=list)
     played_count: int = 0
     search_results: list[str] = field(default_factory=list)
+    search_collection_id: str = ""
+    subsong_path: str = ""
+    subsong_current: int = -1
+    subsong_total: int = 0
+    subsong_wavs: list[str] = field(default_factory=list)
+    predownload_path: str = ""
+    predownload_url: str = ""

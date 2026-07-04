@@ -1,11 +1,9 @@
-"""Startup orchestration, signal handling, graceful shutdown."""
+"""Startup orchestration and graceful shutdown."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-import signal
 import sys
 from pathlib import Path
 
@@ -51,7 +49,14 @@ def create_bot(config: AppConfig) -> ObibokBot:
     audio.setup()
     favorites = Favorites(root_dir)
     blacklist = Blacklist(root_dir)
-    engine = PlaybackEngine(audio=audio, favorites=favorites, blacklist=blacklist, root_dir=root_dir)
+    engine = PlaybackEngine(
+        audio=audio,
+        favorites=favorites,
+        blacklist=blacklist,
+        root_dir=root_dir,
+        archive_root=config.archive_path,
+        shuffle_queue=config.playback.shuffle,
+    )
     monitor = TrackMonitor(audio=audio, empty_timeout=config.auto.empty_timeout)
 
     bot = ObibokBot(
@@ -62,7 +67,7 @@ def create_bot(config: AppConfig) -> ObibokBot:
         command_prefix=config.command_prefix,
         guild_id=config.guild_id,
         auto_start_channel=config.auto.start_channel,
-        empty_timeout=config.auto.empty_timeout,
+        default_loop=config.playback.loop,
     )
 
     return bot
@@ -97,17 +102,6 @@ def main() -> None:
     bot = create_bot(config)
 
     write_pid()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    def _shutdown():
-        logger.info("Shutting down...")
-        remove_pid()
-        loop.stop()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _shutdown)
 
     try:
         bot.run(config.token)

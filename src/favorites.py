@@ -8,6 +8,45 @@ from pathlib import Path
 from .persistence import load_json, save_json
 
 
+def _normalize_track_entry(entry: object) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    filepath = entry.get("filepath")
+    if not isinstance(filepath, str) or not filepath:
+        return None
+    title = entry.get("title", "")
+    collection_id = entry.get("collection_id", "")
+    added_at = entry.get("added_at", 0.0)
+    if not isinstance(title, str):
+        title = ""
+    if not isinstance(collection_id, str):
+        collection_id = ""
+    if not isinstance(added_at, (int, float)) or isinstance(added_at, bool):
+        added_at = 0.0
+    return {
+        "filepath": filepath,
+        "title": title,
+        "collection_id": collection_id,
+        "added_at": float(added_at),
+    }
+
+
+def _normalize_playlist_record(data: object) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    tracks = data.get("tracks", [])
+    if not isinstance(tracks, list):
+        return None
+    normalized_tracks = [item for item in (_normalize_track_entry(track) for track in tracks) if item]
+    return {
+        "name": data.get("name", ""),
+        "author": data.get("author", ""),
+        "author_id": data.get("author_id", 0),
+        "created": data.get("created", 0),
+        "tracks": normalized_tracks,
+    }
+
+
 class Favorites:
     def __init__(self, root_dir: str) -> None:
         self._filepath = Path(root_dir) / "favorites.json"
@@ -19,7 +58,13 @@ class Favorites:
             return
         raw = load_json(self._filepath)
         if isinstance(raw, dict):
-            self._data = {k: v for k, v in raw.items() if isinstance(v, list)}
+            normalized: dict[str, list[dict]] = {}
+            for key, value in raw.items():
+                if not isinstance(value, list):
+                    continue
+                tracks = [item for item in (_normalize_track_entry(entry) for entry in value) if item]
+                normalized[key] = tracks
+            self._data = normalized
         self._loaded = True
 
     def _save(self) -> None:
@@ -29,7 +74,15 @@ class Favorites:
         self._ensure_loaded()
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
-        existing = next((t for t in tracks if t.get("filepath") == filepath), None)
+        existing = next(
+            (
+                track
+                for track in tracks
+                if track.get("filepath") == filepath
+                and (not collection_id or track.get("collection_id", "") == collection_id)
+            ),
+            None,
+        )
         if existing:
             tracks.remove(existing)
             self._save()
@@ -47,10 +100,14 @@ class Favorites:
         self._ensure_loaded()
         return list(self._data.get(str(user_id), []))
 
-    def has_track(self, user_id: int, filepath: str) -> bool:
+    def has_track(self, user_id: int, filepath: str, collection_id: str = "") -> bool:
         self._ensure_loaded()
         tracks = self._data.get(str(user_id), [])
-        return any(t.get("filepath") == filepath for t in tracks)
+        return any(
+            track.get("filepath") == filepath
+            and (not collection_id or track.get("collection_id", "") == collection_id)
+            for track in tracks
+        )
 
     def count(self, user_id: int) -> int:
         self._ensure_loaded()
@@ -90,21 +147,23 @@ class PlaylistLibrary:
         for ext in ("", ".json"):
             filepath = self._dir / f"{safe}{ext}"
             result = load_json(filepath)
-            if result is not None:
-                return result
+            normalized = _normalize_playlist_record(result)
+            if normalized is not None:
+                return normalized
         return None
 
     def list_playlists(self) -> list[dict]:
         playlists: list[dict] = []
         for filepath in sorted(self._dir.glob("*.json")):
             data = load_json(filepath)
-            if not isinstance(data, dict):
+            normalized = _normalize_playlist_record(data)
+            if not normalized:
                 continue
             playlists.append({
-                "name": data.get("name", filepath.stem),
-                "author": data.get("author", "?"),
-                "tracks": len(data.get("tracks", [])),
-                "created": data.get("created", 0),
+                "name": normalized.get("name", filepath.stem) or filepath.stem,
+                "author": normalized.get("author", "?") or "?",
+                "tracks": len(normalized.get("tracks", [])),
+                "created": normalized.get("created", 0),
             })
         return playlists
 

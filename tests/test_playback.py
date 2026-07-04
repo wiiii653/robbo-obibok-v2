@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -59,6 +60,35 @@ class TestPlaybackEngine:
         results = engine.search("test", state)
         assert len(results) == 2
 
+    def test_search_matches_directory(self, tmp_path):
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(tracks=["Games/test.sap", "Composers/other.sid"])
+        results = engine.search("games", state)
+        assert results == ["Games/test.sap"]
+
+    def test_search_matches_metadata(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(collection_mode="asma", tracks=["Composers/other.sid"])
+
+        def fake_metadata(path, collection_id):
+            return {"AUTHOR": "Chip Master"} if path.endswith("other.sid") else {}
+
+        monkeypatch.setattr("src.playback.extract_metadata", fake_metadata)
+        results = engine.search("chip", state)
+        assert results == ["Composers/other.sid"]
+
+    def test_describe_search_result(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+
+        monkeypatch.setattr(
+            engine,
+            "get_track_metadata",
+            lambda filepath, collection_id: {"NAME": "Test Track", "AUTHOR": "Coder"},
+        )
+        label = engine.describe_search_result("Games/test.sap", "asma", 1)
+        assert "Test Track" in label
+        assert "Coder" in label
+
     def test_search_limit(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(tracks=[f"track{i}.sap" for i in range(20)])
@@ -88,6 +118,31 @@ class TestPlaybackEngine:
         engine = self._make_engine(tmp_path)
         state = PlaybackState()
         assert await engine.play_track(state) is None
+
+    def test_mixed_queue_resolves_current_collection(self, tmp_path):
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(
+            collection_mode="asma",
+            queue=["song.sid"],
+            queue_collection_ids=["hvsc"],
+        )
+        path = asyncio.run(engine._resolve_track_path(state, "song.sid"))
+        assert path == tmp_path / "archiwum" / "hvsc" / "C64Music" / "song.sid"
+
+    def test_start_radio_preserves_index_order_when_shuffle_disabled(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        engine.shuffle_queue = False
+        (tmp_path / "asma_cache_local.json").write_text(
+            '{"tracks": [{"path": "first.sap"}, {"path": "second.sap"}]}'
+        )
+        def unexpected_shuffle(queue):
+            raise AssertionError("shuffle must remain disabled")
+
+        monkeypatch.setattr("random.shuffle", unexpected_shuffle)
+        state = PlaybackState()
+
+        assert engine.start_radio(state) == "first.sap"
+        assert state.queue == ["first.sap", "second.sap"]
 
 
 class TestTrackEndBehavior:

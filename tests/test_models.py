@@ -2,28 +2,7 @@
 
 from __future__ import annotations
 
-from src.models import COLLECTIONS, FLIP_ORDER, Collection, PlaybackState, Track
-
-
-class TestTrack:
-    def test_track_creation(self):
-        track = Track(filepath="Games/test.sap", title="Test", author="Author")
-        assert track.filepath == "Games/test.sap"
-        assert track.title == "Test"
-        assert track.author == "Author"
-
-    def test_track_from_cache_entry(self):
-        entry = {"path": "Games/test.sap", "size": 1024}
-        track = Track.from_cache_entry(entry, "asma")
-        assert track.filepath == "Games/test.sap"
-        assert track.collection_id == "asma"
-        assert track.file_ext == "sap"
-        assert track.size == 1024
-
-    def test_track_from_cache_entry_no_name(self):
-        entry = {"path": "Games/my_song.sap"}
-        track = Track.from_cache_entry(entry, "asma")
-        assert track.title == "my_song"
+from src.models import COLLECTIONS, FLIP_ORDER, Collection, PlaybackState
 
 
 class TestCollection:

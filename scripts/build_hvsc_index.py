@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build HVSC local index — scans archiwum/hvsc/C64Music/ for .sid files.
+"""Build HVSC local index from the configured archive root.
 
 Output: hvsc_cache_local.json with relative paths, file sizes, and categories.
 
@@ -15,8 +15,10 @@ import json
 import os
 from pathlib import Path
 
+from index_config import load_archive_root
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = ROOT_DIR / "archiwum" / "hvsc" / "C64Music"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "hvsc" / "C64Music"
 OUTPUT = ROOT_DIR / "hvsc_cache_local.json"
 
 CONTENT_DIRS = ["DEMOS", "GAMES", "MUSICIANS"]

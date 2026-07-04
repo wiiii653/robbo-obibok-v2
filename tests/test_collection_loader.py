@@ -8,7 +8,6 @@ from src.collection_loader import (
     extract_metadata,
     flip_collection,
     get_collection,
-    load_index,
     load_raw_paths,
     parse_sap_header,
 )
@@ -53,39 +52,6 @@ class TestFlipCollection:
         assert flip_collection("hvsc") == "asma"
         assert flip_collection("asma") == "modarchive"
         assert flip_collection("kgen") == "hvsc"
-
-
-class TestLoadIndex:
-    def test_load_from_cache(self, tmp_path):
-        cache = {
-            "version": 1,
-            "total": 2,
-            "tracks": [
-                {"path": "Games/test.sap", "size": 1024},
-                {"path": "Composers/author.sid", "size": 2048},
-            ],
-        }
-        cache_file = tmp_path / "test_cache_local.json"
-        cache_file.write_text(json.dumps(cache))
-
-        col = COLLECTIONS["asma"]
-        original_cache = col.cache_file
-        col.cache_file = str(cache_file)
-        try:
-            tracks = load_index("asma", str(tmp_path))
-            assert tracks is not None
-            assert len(tracks) == 2
-            assert tracks[0].filepath == "Games/test.sap"
-            assert tracks[0].collection_id == "asma"
-        finally:
-            col.cache_file = original_cache
-
-    def test_load_nonexistent_cache(self, tmp_path):
-        tracks = load_index("asma", str(tmp_path))
-        assert tracks is None
-
-    def test_load_invalid_collection(self):
-        assert load_index("nonexistent") is None
 
 
 class TestLoadRawPaths:
