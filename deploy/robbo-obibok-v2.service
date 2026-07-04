@@ -6,6 +6,7 @@ Documentation=https://github.com/wiiii653/robbo-obibok-v2
 Type=simple
 WorkingDirectory=/home/boruta/robbo-obibok-v2
 EnvironmentFile=/home/boruta/robbo-obibok-v2/.env
+ExecStartPre=/usr/bin/pkill -f "/venv/bin/python3 -u -m src" || true
 ExecStart=/home/boruta/robbo-obibok-v2/venv/bin/python3 -u -m src
 Restart=on-failure
 RestartSec=5
