@@ -182,8 +182,18 @@ def load_format_volumes_from_dict(volumes: dict[str, int]) -> None:
 
 
 def enable_compressor() -> None:
-    _audtool_call("plugin-enable", "compressor", "TRUE")
+    _audtool_call("plugin-enable", "compressor", "on")
     logger.info("Audacious Compressor plugin enabled")
+
+
+def enable_console_plugin() -> None:
+    _audtool_call("plugin-enable", "Console", "on")
+    logger.info("Audacious Console plugin enabled (SAP/AY/YM)")
+
+
+def enable_sid_plugin() -> None:
+    _audtool_call("plugin-enable", "SID", "on")
+    logger.info("Audacious SID plugin enabled")
 
 
 def setup_sid_config() -> None:
@@ -256,6 +266,8 @@ class AudioController:
         if start_player(self.sink_name):
             setup_sid_config()
             enable_compressor()
+            enable_console_plugin()
+            enable_sid_plugin()
 
     def play(self, filepath: str) -> bool:
         return play_file(filepath, self.sink_name)
