@@ -12,16 +12,12 @@ import yaml
 @dataclass(slots=True)
 class AudioConfig:
     sink_name: str = "robbo_bot"
-    sample_rate: int = 48000
-    channels: int = 2
-    format: str = "s16le"
 
 
 @dataclass(slots=True)
 class PlaybackConfig:
-    loop: bool = True
+    loop: bool = False
     shuffle: bool = True
-    crossfade: int = 0
 
 
 @dataclass(slots=True)
@@ -45,6 +41,54 @@ class AppConfig:
         return str(Path(__file__).resolve().parent.parent)
 
 
+def _require_mapping(data: dict, key: str) -> dict:
+    value = data.get(key, {})
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"config.{key} must be a mapping")
+    return value
+
+
+def validate_config(data: dict) -> None:
+    if not isinstance(data.get("command_prefix", "!"), str) or not data.get("command_prefix", "!"):
+        raise ValueError("config.command_prefix must not be empty")
+
+    guild_id = data.get("guild_id")
+    if guild_id is not None and (
+        not isinstance(guild_id, int) or isinstance(guild_id, bool) or guild_id <= 0
+    ):
+        raise ValueError("config.guild_id must be a positive integer")
+
+    if "audio" in data:
+        audio = _require_mapping(data, "audio")
+        sink_name = audio.get("sink_name", "robbo_bot")
+        if "sink_name" in audio and (not isinstance(sink_name, str) or not sink_name):
+            raise ValueError("config.audio.sink_name must be a non-empty string")
+
+    if "playback" in data:
+        playback = _require_mapping(data, "playback")
+        if "loop" in playback and not isinstance(playback.get("loop"), bool):
+            raise ValueError("config.playback.loop must be a boolean")
+        if "shuffle" in playback and not isinstance(playback.get("shuffle"), bool):
+            raise ValueError("config.playback.shuffle must be a boolean")
+
+    if "auto" in data:
+        auto = _require_mapping(data, "auto")
+        if "start_channel" in auto and not isinstance(auto.get("start_channel"), str):
+            raise ValueError("config.auto.start_channel must be a string")
+        if "empty_timeout" in auto:
+            empty_timeout = auto.get("empty_timeout", 60)
+            if not isinstance(empty_timeout, int) or isinstance(empty_timeout, bool) or empty_timeout < 0:
+                raise ValueError("config.auto.empty_timeout must be zero or greater")
+
+    if "archive" in data:
+        archive = _require_mapping(data, "archive")
+        archive_path = archive.get("path", "archiwum")
+        if "path" in archive and (not isinstance(archive_path, str) or not archive_path):
+            raise ValueError("config.archive.path must be a non-empty string")
+
+
 def load_config(config_path: str | Path | None = None) -> AppConfig:
     root = Path(__file__).resolve().parent.parent
     if config_path is None:
@@ -54,12 +98,17 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     if Path(config_path).exists():
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise ValueError("config.yaml must contain a mapping at the top level")
+
+    validate_config(data)
 
     token = os.environ.get("DISCORD_BOT_TOKEN", data.get("token", ""))
 
-    audio_data = data.get("audio", {})
-    playback_data = data.get("playback", {})
-    auto_data = data.get("auto", {})
+    audio_data = _require_mapping(data, "audio")
+    playback_data = _require_mapping(data, "playback")
+    auto_data = _require_mapping(data, "auto")
+    archive_data = _require_mapping(data, "archive")
 
     return AppConfig(
         token=token,
@@ -67,18 +116,14 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         guild_id=data.get("guild_id"),
         audio=AudioConfig(
             sink_name=audio_data.get("sink_name", "robbo_bot"),
-            sample_rate=audio_data.get("sample_rate", 48000),
-            channels=audio_data.get("channels", 2),
-            format=audio_data.get("format", "s16le"),
         ),
         playback=PlaybackConfig(
-            loop=playback_data.get("loop", True),
+            loop=playback_data.get("loop", False),
             shuffle=playback_data.get("shuffle", True),
-            crossfade=playback_data.get("crossfade", 0),
         ),
         auto=AutoConfig(
             start_channel=auto_data.get("start_channel", ""),
             empty_timeout=auto_data.get("empty_timeout", 60),
         ),
-        archive_path=data.get("archive", {}).get("path", "archiwum"),
+        archive_path=archive_data.get("path", "archiwum"),
     )

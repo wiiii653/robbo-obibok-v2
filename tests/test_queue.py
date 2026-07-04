@@ -5,11 +5,13 @@ from __future__ import annotations
 from src.models import PlaybackState
 from src.queue import (
     Blacklist,
+    can_restore_queue,
     clear_queue,
     current_track,
     jump_to,
     load_queue,
     next_track,
+    normalize_queue_record,
     restore_queue,
     save_queue,
 )
@@ -29,6 +31,7 @@ class TestNextTrack:
     def test_next_track_returns_none_at_end(self):
         state = PlaybackState(queue=["a.sap", "b.sap"], position=1)
         assert next_track(state) is None
+        assert state.position == 1
 
     def test_next_track_empty_queue(self):
         state = PlaybackState()
@@ -91,6 +94,7 @@ class TestQueuePersistence:
         assert loaded["position"] == 1
         assert loaded["is_looping"] is True
         assert loaded["collection_mode"] == "hvsc"
+        assert loaded["queue_collection_ids"] == ["hvsc", "hvsc"]
 
     def test_load_nonexistent(self, tmp_path):
         assert load_queue(99999, str(tmp_path)) is None
@@ -102,6 +106,38 @@ class TestQueuePersistence:
         assert state.queue == ["x.mod"]
         assert state.is_looping is True
         assert state.collection_mode == "tiny"
+        assert state.queue_collection_ids == ["tiny"]
+
+    def test_normalize_queue_record(self):
+        data = {
+            "queue": ["a.sap", "b.sap"],
+            "position": 1,
+            "is_looping": True,
+            "collection_mode": "asma",
+        }
+        normalized = normalize_queue_record(data)
+        assert normalized is not None
+        assert normalized["queue"] == ["a.sap", "b.sap"]
+
+    def test_can_restore_queue(self):
+        saved = {
+            "queue": ["a.sap", "b.sap"],
+            "position": 0,
+            "is_looping": False,
+            "collection_mode": "asma",
+        }
+        assert can_restore_queue(saved, ["a.sap", "b.sap", "c.sap"], "asma") is True
+        assert can_restore_queue(saved, ["c.sap"], "asma") is False
+
+    def test_mixed_collection_queue_is_not_restored_as_radio(self):
+        saved = {
+            "queue": ["a.sap", "b.sid"],
+            "queue_collection_ids": ["asma", "hvsc"],
+            "position": 0,
+            "is_looping": False,
+            "collection_mode": "asma",
+        }
+        assert can_restore_queue(saved, ["a.sap", "b.sid"], "asma") is False
 
 
 class TestBlacklist:
@@ -154,3 +190,9 @@ class TestBlacklist:
         bl.add(1, "bad.sap")
         bl2 = Blacklist(str(tmp_path))
         assert bl2.is_blacklisted("bad.sap") is True
+
+    def test_ignores_malformed_entries(self, tmp_path):
+        path = tmp_path / "blacklist.json"
+        path.write_text('{"1": ["good.sap", 123, null, ""], "2": "bad"}')
+        bl = Blacklist(str(tmp_path))
+        assert bl.get_tracks(1) == ["good.sap"]

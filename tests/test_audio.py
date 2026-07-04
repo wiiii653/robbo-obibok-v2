@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 from src.audio import (
     COLLECTION_VOLUMES,
     AudioController,
-    current_song,
     get_volume,
     is_playing,
     output_length,
@@ -87,11 +86,6 @@ class TestPlaybackControl:
         assert is_playing() is False
 
     @patch("src.audio.subprocess.run")
-    def test_current_song(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="test_track.sap\n")
-        assert current_song() == "test_track.sap"
-
-    @patch("src.audio.subprocess.run")
     def test_output_length(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="120\n")
         assert output_length() == 120
@@ -124,17 +118,7 @@ class TestPlayFile:
     @patch("src.audio._audtool_call")
     @patch("src.audio._audacious_ready", True)
     def test_play_file_failure(self, mock_audtool):
-        mock_audtool.side_effect = [
-            True,   # playlist-clear
-            True,   # playlist-addurl
-            True,   # playback-play (attempt 1)
-            False,  # playback-playing (attempt 1)
-            True,   # playback-play (attempt 2)
-            False,  # playback-playing (attempt 2)
-            True,   # playback-play (attempt 3)
-            False,  # playback-playing (attempt 3)
-            True,   # playlist-clear (cleanup)
-        ]
+        mock_audtool.side_effect = [True, True, True] + [False] * 10 + [True]
         result = play_file("test.sap", "test_sink")
         assert result is False
 
@@ -200,15 +184,29 @@ class TestSinkManagement:
         assert setup_sink("robbo_test_sink") is True
         assert mock_run.call_count == 2
 
+    @patch("src.audio.subprocess.run")
+    def test_move_to_sink_only_moves_audacious(self, mock_run):
+        listing = """
+Sink Input #41
+    Properties:
+        application.name = "Firefox"
+Sink Input #42
+    Properties:
+        application.process.binary = "audacious"
+"""
+        mock_run.side_effect = [MagicMock(stdout=listing), MagicMock(returncode=0)]
+        from src.audio import _move_to_sink
+
+        _move_to_sink("robbo_bot")
+
+        assert mock_run.call_count == 2
+        mock_run.assert_any_call(
+            ["pactl", "move-sink-input", "42", "robbo_bot"],
+            capture_output=True,
+        )
+
 
 class TestPlayerLifecycle:
-    @patch("src.audio._audtool_call")
-    def test_stop_player(self, mock_tool):
-        mock_tool.return_value = True
-        from src.audio import stop_player
-        stop_player()
-        assert mock_tool.call_count == 2
-
     @patch("src.audio.subprocess.run")
     @patch("src.audio._audtool_call")
     def test_kill_player(self, mock_tool, mock_run):
@@ -326,12 +324,6 @@ class TestAudioConfig:
         ctrl.kill()
         mock_kill.assert_called_once()
 
-    @patch("src.audio.current_song")
-    def test_controller_current_song(self, mock_song):
-        mock_song.return_value = "test.sap"
-        ctrl = AudioController()
-        assert ctrl.current_song() == "test.sap"
-
     @patch("src.audio.song_length")
     def test_controller_song_length(self, mock_len):
         mock_len.return_value = 300
@@ -345,7 +337,9 @@ class TestAudioConfig:
         assert ctrl.output_length() == 120
 
     @patch("src.audio.ensure_audacious")
-    def test_controller_ensure_ready(self, mock_ensure):
+    @patch("src.audio.setup_sink")
+    def test_controller_ensure_ready(self, mock_sink, mock_ensure):
         ctrl = AudioController()
         ctrl.ensure_ready()
+        mock_sink.assert_called_once_with("robbo_bot")
         mock_ensure.assert_called_once()

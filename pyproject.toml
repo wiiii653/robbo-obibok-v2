@@ -24,8 +24,8 @@ dev = [
 [project.scripts]
 robbo-obibok = "src.launcher:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["src"]
 
 [tool.ruff]
 target-version = "py311"

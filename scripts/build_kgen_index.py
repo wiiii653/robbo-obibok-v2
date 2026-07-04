@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build KGen local index — scans archiwum/kgen/ for keygen music modules.
+"""Build KGen local index from the configured archive root.
 
 Output: kgen_cache_local.json with relative paths, file sizes, and names.
 
@@ -13,8 +13,10 @@ import json
 import os
 from pathlib import Path
 
+from index_config import load_archive_root
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = ROOT_DIR / "archiwum" / "kgen"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "kgen"
 OUTPUT = ROOT_DIR / "kgen_cache_local.json"
 
 TRACK_EXTENSIONS = {"mod", "xm", "it", "s3m"}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Tiny Music local index — scans archiwum/tiny/ for MOD/XM/IT/S3M/MED files.
+"""Build Tiny Music local index from the configured archive root.
 
 Output: tiny_cache_local.json with relative paths, file sizes, and names.
 
@@ -13,8 +13,10 @@ import json
 import os
 from pathlib import Path
 
+from index_config import load_archive_root
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = ROOT_DIR / "archiwum" / "tiny"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "tiny"
 OUTPUT = ROOT_DIR / "tiny_cache_local.json"
 
 TRACK_EXTENSIONS = {"mod", "xm", "it", "s3m", "med", "dmf", "mo3", "mptm"}

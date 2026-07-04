@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.config import AppConfig, AudioConfig, AutoConfig, PlaybackConfig, load_config
 
 
@@ -11,7 +13,7 @@ class TestAppConfig:
         assert config.command_prefix == "!"
         assert config.guild_id is None
         assert config.audio.sink_name == "robbo_bot"
-        assert config.playback.loop is True
+        assert config.playback.loop is False
         assert config.playback.shuffle is True
         assert config.auto.empty_timeout == 60
 
@@ -62,21 +64,24 @@ class TestLoadConfig:
         config = load_config()
         assert config.token == "test-token"
 
+    def test_allows_sparse_config(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("command_prefix: '?'\n")
+        config = load_config(config_path)
+        assert config.command_prefix == "?"
+
 
 class TestAudioConfig:
     def test_defaults(self):
         audio = AudioConfig()
         assert audio.sink_name == "robbo_bot"
-        assert audio.sample_rate == 48000
-        assert audio.channels == 2
 
 
 class TestPlaybackConfig:
     def test_defaults(self):
         playback = PlaybackConfig()
-        assert playback.loop is True
+        assert playback.loop is False
         assert playback.shuffle is True
-        assert playback.crossfade == 0
 
 
 class TestAutoConfig:

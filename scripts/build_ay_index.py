@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build AY local index — scans archiwum/ay/ for .ay files.
+"""Build AY local index from the configured archive root.
 
 Output: ay_cache_local.json with relative paths, file sizes, and categories.
 
@@ -13,8 +13,10 @@ import json
 import os
 from pathlib import Path
 
+from index_config import load_archive_root
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = ROOT_DIR / "archiwum" / "ay"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "ay"
 OUTPUT = ROOT_DIR / "ay_cache_local.json"
 
 SUBDIRS = {

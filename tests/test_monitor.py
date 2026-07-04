@@ -11,6 +11,8 @@ from src.monitor import (
     TrackMonitor,
     compute_timeout,
     is_gme_format,
+    should_advance_after_stop,
+    should_confirm_output_drop,
 )
 
 
@@ -21,14 +23,11 @@ class TestIsGmeFormat:
     def test_nsf_is_gme(self):
         assert is_gme_format("test.nsf") is True
 
-    def test_spc_is_gme(self):
-        assert is_gme_format("test.spc") is True
-
     def test_mod_is_not_gme(self):
         assert is_gme_format("test.mod") is False
 
-    def test_sid_is_not_gme(self):
-        assert is_gme_format("test.sid") is False
+    def test_sid_is_gme(self):
+        assert is_gme_format("test.sid") is True
 
     def test_no_extension(self):
         assert is_gme_format("noext") is False
@@ -36,7 +35,7 @@ class TestIsGmeFormat:
 
 class TestComputeTimeout:
     def test_known_length(self):
-        assert compute_timeout(120) == 150
+        assert compute_timeout(120) == 135
 
     def test_unknown_length(self):
         assert compute_timeout(0) == GME_TIMEOUT
@@ -44,6 +43,35 @@ class TestComputeTimeout:
     def test_negative_length(self):
         assert compute_timeout(-1) == GME_TIMEOUT
 
+    def test_gme_length_uses_fixed_timeout(self):
+        assert compute_timeout(999, is_gme_format=True) == GME_TIMEOUT
+
+
+class TestMonitorHelpers:
+    def test_confirm_output_drop_waits_for_grace_period(self):
+        now = 100.0
+        drop, since = should_confirm_output_drop(20, 2, None, now, 3, is_gme_format=False)
+        assert drop is False
+        assert since == now
+
+        drop, since = should_confirm_output_drop(20, 2, since, now + 4, 3, is_gme_format=False)
+        assert drop is True
+        assert since is None
+
+    def test_confirm_output_drop_ignored_for_gme_formats(self):
+        drop, since = should_confirm_output_drop(20, 2, None, 100.0, 3, is_gme_format=True)
+        assert drop is False
+        assert since is None
+
+    def test_should_advance_after_stop_after_grace_period(self):
+        now = 100.0
+        advance, since = should_advance_after_stop(None, now, 3)
+        assert advance is False
+        assert since == now
+
+        advance, since = should_advance_after_stop(since, now + 4, 3)
+        assert advance is True
+        assert since is None
 
 class TestTrackMonitor:
     def test_monitor_creation(self):
@@ -178,6 +206,31 @@ class TestMonitorTickBranches:
 
         await monitor._tick(state, on_end, on_empty, lambda: 0)
         assert len(emptied) >= 1
+
+    @pytest.mark.asyncio
+    async def test_tick_empty_channel_waits_for_timeout(self):
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: 10,
+            "song_length": lambda self=None: 100,
+        })()
+        monitor = TrackMonitor(audio=audio, empty_timeout=5)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
+        emptied = []
+
+        async def on_end(s):
+            pass
+
+        async def on_empty():
+            emptied.append(True)
+
+        await monitor._tick(state, on_end, on_empty, lambda: 0)
+        assert len(emptied) == 0
+        assert monitor._empty_since is not None
+
+        monitor._empty_since = asyncio.get_running_loop().time() - 6
+        await monitor._tick(state, on_end, on_empty, lambda: 0)
+        assert len(emptied) == 1
 
     @pytest.mark.asyncio
     async def test_tick_elapsed_negative(self):

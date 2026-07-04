@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .models import COLLECTIONS
 
@@ -41,7 +41,7 @@ def setup_sink(sink_name: str) -> bool:
     return True
 
 
-def start_player() -> bool:
+def start_player(sink_name: str = "robbo_bot") -> bool:
     global _audacious_ready
     if _audacious_ready:
         if _is_audacious_alive():
@@ -52,7 +52,7 @@ def start_player() -> bool:
         ["audacious", "--headless"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env={**os.environ, "PULSE_SINK": "robbo_bot"},
+        env={**os.environ, "PULSE_SINK": sink_name},
     )
     for _ in range(20):
         if _audtool_call("version"):
@@ -63,11 +63,6 @@ def start_player() -> bool:
     return False
 
 
-def stop_player() -> None:
-    _audtool_call("playback-stop")
-    _audtool_call("playlist-clear")
-
-
 def kill_player() -> None:
     _audtool_call("playback-stop")
     subprocess.run(["pkill", "-x", "audacious"], capture_output=True)
@@ -75,7 +70,7 @@ def kill_player() -> None:
 
 def play_file(filepath: str, sink_name: str) -> bool:
     if not _audacious_ready:
-        start_player()
+        start_player(sink_name)
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
     _audtool_call("playlist-clear")
     add_ok = _audtool_call("playlist-addurl", filepath)
@@ -100,14 +95,6 @@ def stop_playback() -> None:
 
 def is_playing() -> bool:
     return _audtool_call("playback-playing")
-
-
-def current_song() -> str:
-    result = subprocess.run(
-        ["audtool", "current-song"],
-        capture_output=True, text=True, timeout=10,
-    )
-    return result.stdout.strip()
 
 
 def output_length() -> int:
@@ -167,11 +154,11 @@ def setup_sid_config() -> None:
     logger.info("Audacious SID plugin config set")
 
 
-def ensure_audacious() -> None:
+def ensure_audacious(sink_name: str = "robbo_bot") -> None:
     if _audacious_ready and _is_audacious_alive():
         return
     kill_player()
-    start_player()
+    start_player(sink_name)
 
 
 def _is_audacious_alive() -> bool:
@@ -183,14 +170,21 @@ def _is_audacious_alive() -> bool:
 
 def _move_to_sink(sink_name: str) -> None:
     result = subprocess.run(
-        ["pactl", "list", "sink-inputs", "short"],
+        ["pactl", "list", "sink-inputs"],
         capture_output=True, text=True,
     )
-    for line in result.stdout.splitlines():
-        fields = line.split()
-        if fields and fields[0].isdigit():
+    for block in result.stdout.split("Sink Input #")[1:]:
+        index, _, details = block.partition("\n")
+        if not index.strip().isdigit():
+            continue
+        details_lower = details.lower()
+        is_audacious = (
+            'application.name = "audacious"' in details_lower
+            or 'application.process.binary = "audacious"' in details_lower
+        )
+        if is_audacious:
             subprocess.run(
-                ["pactl", "move-sink-input", fields[0], sink_name],
+                ["pactl", "move-sink-input", index.strip(), sink_name],
                 capture_output=True,
             )
 
@@ -209,12 +203,10 @@ def _audtool_call(*args: str) -> bool:
 @dataclass(slots=True)
 class AudioController:
     sink_name: str = "robbo_bot"
-    _ready: bool = field(default=False, init=False, repr=False)
 
     def setup(self) -> None:
         setup_sink(self.sink_name)
-        self._ready = start_player()
-        if self._ready:
+        if start_player(self.sink_name):
             setup_sid_config()
             enable_compressor()
 
@@ -229,9 +221,6 @@ class AudioController:
 
     def is_playing(self) -> bool:
         return is_playing()
-
-    def current_song(self) -> str:
-        return current_song()
 
     def output_length(self) -> int:
         return output_length()
@@ -249,4 +238,5 @@ class AudioController:
         set_volume_for_collection(collection_id, self.sink_name)
 
     def ensure_ready(self) -> None:
-        ensure_audacious()
+        setup_sink(self.sink_name)
+        ensure_audacious(self.sink_name)

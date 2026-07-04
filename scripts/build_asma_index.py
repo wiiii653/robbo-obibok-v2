@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build ASMA local index — scans archiwum/asma/ for .sap files.
+"""Build ASMA local index from the configured archive root.
 
 Output: asma_cache_local.json with relative paths, file sizes, and categories.
 
@@ -15,8 +15,10 @@ import json
 import os
 from pathlib import Path
 
+from index_config import load_archive_root
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = ROOT_DIR / "archiwum" / "asma"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "asma"
 OUTPUT = ROOT_DIR / "asma_cache_local.json"
 
 TOP_DIRS = ["Composers", "Games", "Groups", "Misc", "Unknown"]

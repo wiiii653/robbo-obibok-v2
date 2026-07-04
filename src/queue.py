@@ -8,14 +8,69 @@ from .models import PlaybackState
 from .persistence import load_json, save_json
 
 
+def normalize_queue_record(data: object) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    queue = data.get("queue")
+    position = data.get("position")
+    is_looping = data.get("is_looping")
+    collection_mode = data.get("collection_mode")
+    queue_collection_ids = data.get("queue_collection_ids")
+    if not isinstance(queue, list) or not all(isinstance(item, str) for item in queue):
+        return None
+    if not isinstance(position, int) or isinstance(position, bool):
+        return None
+    if queue:
+        if position < 0 or position >= len(queue):
+            return None
+    elif position not in (-1, 0):
+        return None
+    if not isinstance(is_looping, bool) or not isinstance(collection_mode, str):
+        return None
+    if queue_collection_ids is None:
+        queue_collection_ids = [collection_mode] * len(queue)
+    if (
+        not isinstance(queue_collection_ids, list)
+        or len(queue_collection_ids) != len(queue)
+        or not all(isinstance(item, str) and item for item in queue_collection_ids)
+    ):
+        return None
+    return {
+        "queue": list(queue),
+        "queue_collection_ids": list(queue_collection_ids),
+        "position": position,
+        "is_looping": is_looping,
+        "collection_mode": collection_mode,
+    }
+
+
+def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_mode: str) -> bool:
+    if not isinstance(saved, dict) or not tracks:
+        return False
+    if saved.get("collection_mode") != collection_mode:
+        return False
+    queue = saved.get("queue")
+    if not isinstance(queue, list) or not all(isinstance(item, str) for item in queue):
+        return False
+    queue_collection_ids = saved.get("queue_collection_ids")
+    if queue_collection_ids is not None and (
+        not isinstance(queue_collection_ids, list)
+        or len(queue_collection_ids) != len(queue)
+        or any(item != collection_mode for item in queue_collection_ids)
+    ):
+        return False
+    return all(item in tracks for item in queue)
+
+
 def next_track(state: PlaybackState) -> str | None:
     if not state.queue:
         return None
     if state.is_looping:
         return state.queue[state.position]
-    state.position += 1
-    if state.position >= len(state.queue):
+    next_position = state.position + 1
+    if next_position >= len(state.queue):
         return None
+    state.position = next_position
     return state.queue[state.position]
 
 
@@ -34,6 +89,7 @@ def jump_to(state: PlaybackState, index: int) -> str | None:
 
 def clear_queue(state: PlaybackState) -> None:
     state.queue = []
+    state.queue_collection_ids = []
     state.position = 0
 
 
@@ -45,6 +101,9 @@ def save_queue(state: PlaybackState, root_dir: str) -> bool:
     filepath = queue_dir / f"{state.guild_id}.json"
     data = {
         "queue": state.queue,
+        "queue_collection_ids": state.queue_collection_ids
+        if len(state.queue_collection_ids) == len(state.queue)
+        else [state.collection_mode] * len(state.queue),
         "position": state.position,
         "is_looping": state.is_looping,
         "collection_mode": state.collection_mode,
@@ -55,14 +114,18 @@ def save_queue(state: PlaybackState, root_dir: str) -> bool:
 def load_queue(guild_id: int, root_dir: str) -> dict | None:
     queue_dir = Path(root_dir) / "var" / "queues"
     filepath = queue_dir / f"{guild_id}.json"
-    return load_json(filepath)
+    return normalize_queue_record(load_json(filepath))
 
 
 def restore_queue(data: dict, state: PlaybackState) -> None:
-    state.queue = data.get("queue", [])
-    state.position = data.get("position", 0)
-    state.is_looping = data.get("is_looping", False)
-    state.collection_mode = data.get("collection_mode", state.collection_mode)
+    normalized = normalize_queue_record(data)
+    if not normalized:
+        return
+    state.queue = normalized["queue"]
+    state.queue_collection_ids = normalized["queue_collection_ids"]
+    state.position = normalized["position"]
+    state.is_looping = normalized["is_looping"]
+    state.collection_mode = normalized["collection_mode"]
 
 
 class Blacklist:
@@ -76,7 +139,13 @@ class Blacklist:
             return
         raw = load_json(self._filepath)
         if isinstance(raw, dict):
-            self._data = {k: v for k, v in raw.items() if isinstance(v, list)}
+            normalized: dict[str, list[str]] = {}
+            for key, value in raw.items():
+                if not isinstance(value, list):
+                    continue
+                tracks = [track for track in value if isinstance(track, str) and track]
+                normalized[key] = tracks
+            self._data = normalized
         self._loaded = True
 
     def _save(self) -> None:

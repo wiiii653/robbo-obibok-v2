@@ -13,9 +13,11 @@ from discord.ext import commands
 from .collection_loader import flip_collection, get_collection, load_raw_paths
 from .embeds import now_playing_embed, queue_embed, status_embed
 from .favorites import PlaylistLibrary
+from .lease import PlaybackLease
 from .models import PlaybackState
 from .monitor import TrackMonitor
 from .playback import PlaybackEngine
+from .remote import is_remote_track
 from .stream import MonitorAudioSource
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ class ObibokBot(commands.Bot):
         command_prefix: str = "!",
         guild_id: int | None = None,
         auto_start_channel: str = "",
-        empty_timeout: int = 60,
+        default_loop: bool = False,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -46,11 +48,14 @@ class ObibokBot(commands.Bot):
         self.sink_name = sink_name
         self.guild_id = guild_id
         self.auto_start_channel = auto_start_channel
-        self.empty_timeout = empty_timeout
+        self.default_loop = default_loop
+        self.playback_lease = PlaybackLease()
         self._states: dict[int, PlaybackState] = {}
         self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
+        self._predownload_tasks: dict[int, asyncio.Task] = {}
         self._active_streams: dict[int, MonitorAudioSource] = {}
+        self._background_tasks: list[asyncio.Task] = []
         self._np_messages_max = 200
         self._reaction_users: dict[tuple[int, int], set[str]] = {}
 
@@ -85,17 +90,32 @@ class ObibokBot(commands.Bot):
         if current is not None and getattr(current, "source_id", None) == source_id:
             self._active_streams.pop(guild_id, None)
 
+    def try_acquire_lease(self, guild: discord.Guild) -> bool:
+        return self.playback_lease.acquire(guild.id, guild.name)
+
+    def release_lease(self, guild_id: int | None = None) -> None:
+        if guild_id is None or self.playback_lease.owner_guild_id == guild_id:
+            self.playback_lease.release()
+
+    def _cancel_predownload(self, guild_id: int) -> None:
+        task = self._predownload_tasks.pop(guild_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    def _cancel_monitor(self, guild_id: int) -> None:
+        task = self._monitor_tasks.pop(guild_id, None)
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+
+    def _schedule_predownload(self, guild_id: int, state: PlaybackState) -> None:
+        self._cancel_predownload(guild_id)
+        task = asyncio.create_task(self.engine.predownload_next(state))
+        self._predownload_tasks[guild_id] = task
+
     def get_state(self, guild_id: int) -> PlaybackState:
         if guild_id not in self._states:
-            self._states[guild_id] = PlaybackState(guild_id=guild_id)
+            self._states[guild_id] = PlaybackState(guild_id=guild_id, is_looping=self.default_loop)
         return self._states[guild_id]
-
-    def check_guild(self, ctx: commands.Context) -> bool:
-        if self.guild_id is None:
-            return True
-        if ctx.guild is None:
-            return False
-        return ctx.guild.id == self.guild_id
 
     async def process_commands(self, message: discord.Message) -> None:
         if self.guild_id is not None and message.guild and message.guild.id != self.guild_id:
@@ -109,11 +129,70 @@ class ObibokBot(commands.Bot):
         await self.add_cog(CollectionCog(self))
         await self.add_cog(FavoritesCog(self))
         await self.add_cog(ToolsCog(self))
+        self._background_tasks.append(asyncio.create_task(self._health_watchdog()))
+
+    async def close(self) -> None:
+        for task in self._background_tasks:
+            task.cancel()
+        for task in self._background_tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.warning("Background task failed during shutdown: %s", exc)
+        self._background_tasks.clear()
+        for guild_id in list(self._active_streams):
+            self._stop_stream(guild_id)
+        for task in list(self._predownload_tasks.values()):
+            task.cancel()
+        self._predownload_tasks.clear()
+        for task in list(self._monitor_tasks.values()):
+            task.cancel()
+        self._monitor_tasks.clear()
+        await super().close()
+
+    async def _health_watchdog(self) -> None:
+        while not self.is_closed():
+            await asyncio.sleep(30)
+            try:
+                await asyncio.to_thread(self.engine.audio.ensure_ready)
+            except Exception as exc:
+                logger.warning("Health watchdog failed: %s", exc)
 
 
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot = bot
+
+    async def _can_control_audio(self, ctx: commands.Context, *, require_owner: bool = False) -> bool:
+        if not ctx.guild:
+            return False
+        owner_id = self.bot.playback_lease.owner_guild_id
+        if owner_id is not None and owner_id != ctx.guild.id:
+            owner = self.bot.playback_lease.owner_guild_name or "another server"
+            await ctx.send(f"Music is currently controlled by **{owner}**.")
+            return False
+        if require_owner and owner_id != ctx.guild.id:
+            await ctx.send("Nothing is playing on this server.")
+            return False
+        return True
+
+    async def _finish_playback(self, ctx: commands.Context, state: PlaybackState, message: str) -> None:
+        guild_id = ctx.guild.id if ctx.guild else None
+        try:
+            await self.bot.engine.stop(state)
+        except Exception as exc:
+            logger.warning("Failed to stop audio during cleanup: %s", exc)
+        if guild_id is not None:
+            self.bot._stop_stream(guild_id)
+            self.bot._cancel_predownload(guild_id)
+        if guild_id is not None:
+            self.bot._cancel_monitor(guild_id)
+        self.bot.release_lease(guild_id)
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
+        await ctx.send(message)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
@@ -136,12 +215,14 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(member.guild.id)
         if state.is_playing:
             return
-        if not member.guild.me or not member.guild.me.voice:
-            pass
+        if not self.bot.try_acquire_lease(member.guild):
+            return
+        vc = None
         try:
             vc = await after.channel.connect()
             track = self.bot.engine.start_radio(state, user_id=member.id)
             if not track:
+                self.bot.release_lease(member.guild.id)
                 await vc.disconnect()
                 return
             state.voice_channel_id = after.channel.id
@@ -156,9 +237,20 @@ class PlaybackCog(commands.Cog):
                 async def send(self, *args, **kwargs):
                     return await self._send(*args, **kwargs)
 
-            ctx = FakeCtx(member.guild, member, vc, member.guild.system_channel.send)
+            async def noop_send(*args, **kwargs):
+                return None
+
+            send_fn = member.guild.system_channel.send if member.guild.system_channel else noop_send
+            ctx = FakeCtx(member.guild, member, vc, send_fn)
             await self._play_and_monitor(ctx, state)
         except Exception as exc:
+            await self.bot.engine.stop(state)
+            self.bot._stop_stream(member.guild.id)
+            self.bot._cancel_predownload(member.guild.id)
+            self.bot._cancel_monitor(member.guild.id)
+            self.bot.release_lease(member.guild.id)
+            if vc:
+                await vc.disconnect()
             logger.warning("Auto-start failed: %s", exc)
 
     @commands.command(aliases=["pl", "radio", "start"])
@@ -170,46 +262,109 @@ class PlaybackCog(commands.Cog):
 
         state = self.bot.get_state(ctx.guild.id)
 
+        if is_remote_track(query):
+            if not self.bot.try_acquire_lease(ctx.guild):
+                owner = self.bot.playback_lease.owner_guild_name or "another server"
+                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
+            self.bot._cancel_predownload(ctx.guild.id)
+            state.queue = [query]
+            state.queue_collection_ids = [state.collection_mode]
+            state.position = 0
+            try:
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                await ctx.author.voice.channel.connect()
+                state.voice_channel_id = ctx.author.voice.channel.id
+                await ctx.send("Starting remote track...")
+                await self._play_and_monitor(ctx, state)
+            except Exception as exc:
+                await self._finish_playback(ctx, state, f"Failed to play remote track: {exc}")
+            return
+
         if query.isdigit():
             idx = int(query) - 1
             if not state.search_results or idx < 0 or idx >= len(state.search_results):
                 return await ctx.send("Invalid number. Use !search first.")
             path = state.search_results[idx]
-            state.queue.append(path)
-            state.position = len(state.queue) - 1
-            await self._play_and_monitor(ctx, state)
+            if not self.bot.try_acquire_lease(ctx.guild):
+                owner = self.bot.playback_lease.owner_guild_name or "another server"
+                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
+            self.bot._cancel_predownload(ctx.guild.id)
+            state.queue = [path]
+            state.queue_collection_ids = [state.search_collection_id or state.collection_mode]
+            state.position = 0
+            try:
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                await ctx.author.voice.channel.connect()
+                state.voice_channel_id = ctx.author.voice.channel.id
+                await self._play_and_monitor(ctx, state)
+            except Exception as exc:
+                await self._finish_playback(ctx, state, f"Failed to play selection: {exc}")
             return
 
         if query:
+            if not state.tracks:
+                paths = load_raw_paths(state.collection_mode, self.bot.root_dir)
+                if paths:
+                    state.tracks = paths
             results = self.bot.engine.search(query, state)
             if not results:
                 return await ctx.send(f"No tracks matching `{query}`.")
+            if not self.bot.try_acquire_lease(ctx.guild):
+                owner = self.bot.playback_lease.owner_guild_name or "another server"
+                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
+            self.bot._cancel_predownload(ctx.guild.id)
             state.search_results = results
-            lines = [f"`{i+1}.` `{r.rsplit('/', 1)[-1]}`" for i, r in enumerate(results[:10])]
-            return await ctx.send("\n".join(lines))
+            state.search_collection_id = state.collection_mode
+            state.queue = list(results)
+            state.queue_collection_ids = [state.collection_mode] * len(state.queue)
+            state.position = 0
+            try:
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                await ctx.author.voice.channel.connect()
+                state.voice_channel_id = ctx.author.voice.channel.id
+                await ctx.send(f"Starting search result for `{query}`...")
+                await self._play_and_monitor(ctx, state)
+            except Exception as exc:
+                await self._finish_playback(ctx, state, f"Failed to play search result: {exc}")
+            return
 
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
-        await ctx.author.voice.channel.connect()
-        track = self.bot.engine.start_radio(state, user_id=ctx.author.id)
-        if not track:
-            return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
+        if not self.bot.try_acquire_lease(ctx.guild):
+            owner = self.bot.playback_lease.owner_guild_name or "another server"
+            return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
+        try:
+            self.bot._cancel_predownload(ctx.guild.id)
+            await ctx.author.voice.channel.connect()
+            track = self.bot.engine.start_radio(state, user_id=ctx.author.id)
+            if not track:
+                self.bot.release_lease(ctx.guild.id)
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
 
-        state.voice_channel_id = ctx.author.voice.channel.id
-        await ctx.send(f"Starting **{state.collection_mode.upper()}** radio...")
-        await self._play_and_monitor(ctx, state)
+            state.voice_channel_id = ctx.author.voice.channel.id
+            await ctx.send(f"Starting **{state.collection_mode.upper()}** radio...")
+            await self._play_and_monitor(ctx, state)
+        except Exception as exc:
+            await self._finish_playback(ctx, state, f"Failed to start playback: {exc}")
 
     @commands.command(aliases=["st"])
     async def stop(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
+        if not await self._can_control_audio(ctx):
+            return
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.stop(state)
         self.bot._stop_stream(ctx.guild.id)
-        task = self.bot._monitor_tasks.pop(ctx.guild.id, None)
-        if task and not task.done():
-            task.cancel()
+        self.bot._cancel_predownload(ctx.guild.id)
+        self.bot._cancel_monitor(ctx.guild.id)
+        self.bot.release_lease(ctx.guild.id)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
         await ctx.send("Stopped.")
@@ -218,11 +373,16 @@ class PlaybackCog(commands.Cog):
     async def skip(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
+        if not await self._can_control_audio(ctx, require_owner=True):
+            return
         state = self.bot.get_state(ctx.guild.id)
+        self.bot._cancel_monitor(ctx.guild.id)
+        self.bot._cancel_predownload(ctx.guild.id)
         track = await self.bot.engine.skip_track(state)
         if not track:
-            return await ctx.send("Queue empty.")
-        await self._play_and_monitor(ctx, state)
+            return await self._finish_playback(ctx, state, "Playlist ended.")
+        await self._after_track_started(ctx, state)
+        self._install_monitor(ctx, state)
 
     @commands.command()
     async def np(self, ctx: commands.Context) -> None:
@@ -231,14 +391,15 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         if not state.current_track:
             return await ctx.send("Nothing playing.")
-        col = get_collection(state.collection_mode)
-        meta = self.bot.engine.get_track_metadata(state.current_track, state.collection_mode)
+        collection_id = state.current_collection_id or state.collection_mode
+        col = get_collection(collection_id)
+        meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
         title = meta.get("NAME", state.current_track.rsplit("/", 1)[-1])
         author = meta.get("AUTHOR", "Unknown")
         embed = now_playing_embed(
             title=title,
             author=author,
-            collection_name=col.name if col else state.collection_mode,
+            collection_name=col.name if col else collection_id,
             collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
@@ -246,7 +407,7 @@ class PlaybackCog(commands.Cog):
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
-            "collection_id": state.collection_mode,
+            "collection_id": collection_id,
         })
 
     @commands.command(aliases=["q"])
@@ -272,11 +433,16 @@ class PlaybackCog(commands.Cog):
     async def jump(self, ctx: commands.Context, index: int) -> None:
         if not ctx.guild:
             return
+        if not await self._can_control_audio(ctx, require_owner=True):
+            return
         state = self.bot.get_state(ctx.guild.id)
-        track = self.bot.engine.jump_to_track(state, index - 1)
+        self.bot._cancel_monitor(ctx.guild.id)
+        self.bot._cancel_predownload(ctx.guild.id)
+        track = await self.bot.engine.jump_to_track(state, index - 1)
         if not track:
             return await ctx.send("Invalid position.")
-        await self._play_and_monitor(ctx, state)
+        await self._after_track_started(ctx, state)
+        self._install_monitor(ctx, state)
 
     @commands.command()
     async def loop(self, ctx: commands.Context) -> None:
@@ -288,6 +454,8 @@ class PlaybackCog(commands.Cog):
 
     @commands.command()
     async def volume(self, ctx: commands.Context, level: int = -1) -> None:
+        if not await self._can_control_audio(ctx):
+            return
         if level < 0:
             vol = self.bot.engine.audio.get_volume()
             return await ctx.send(f"Volume: {vol}%" if vol else "Volume: unknown")
@@ -298,8 +466,16 @@ class PlaybackCog(commands.Cog):
     async def clear(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
+        if not await self._can_control_audio(ctx):
+            return
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.clear(state)
+        self.bot._stop_stream(ctx.guild.id)
+        self.bot._cancel_predownload(ctx.guild.id)
+        self.bot._cancel_monitor(ctx.guild.id)
+        self.bot.release_lease(ctx.guild.id)
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
         await ctx.send("Queue cleared.")
 
     @commands.command()
@@ -325,29 +501,43 @@ class PlaybackCog(commands.Cog):
         if not ctx.guild:
             return
         if not ctx.voice_client:
-            return
+            return await self._finish_playback(ctx, state, "Voice connection unavailable.")
 
-        task = self.bot._monitor_tasks.pop(ctx.guild.id, None)
-        if task and not task.done():
-            task.cancel()
+        self.bot._cancel_monitor(ctx.guild.id)
+        self.bot._cancel_predownload(ctx.guild.id)
 
         # Start audio stream (restart if needed — handles voice reconnects)
         self.bot._start_stream(ctx.guild.id, ctx.voice_client)
 
         track = await self.bot.engine.play_track(state)
         if not track:
-            return await ctx.send("Failed to play track.")
+            return await self._finish_playback(ctx, state, "Failed to play track.")
 
+        await self._after_track_started(ctx, state)
+        self._install_monitor(ctx, state)
+
+    async def _after_track_started(self, ctx: commands.Context, state: PlaybackState) -> None:
         await self._send_now_playing(ctx, state)
+        if ctx.guild:
+            self.bot._schedule_predownload(ctx.guild.id, state)
+
+    def _install_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
+        if not ctx.guild:
+            return
+        guild_id = ctx.guild.id
 
         async def on_track_end(s: PlaybackState) -> None:
             next_t = await self.bot.engine.skip_track(s)
             if next_t:
-                await self._play_and_monitor(ctx, s)
+                await self._after_track_started(ctx, s)
+            else:
+                await self._finish_playback(ctx, s, "Playlist ended.")
 
         async def on_empty() -> None:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(ctx.guild.id)
+            self.bot._cancel_predownload(ctx.guild.id)
+            self.bot.release_lease(ctx.guild.id)
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
 
@@ -356,19 +546,26 @@ class PlaybackCog(commands.Cog):
                 return 0
             return len([m for m in ctx.voice_client.channel.members if not m.bot])
 
-        self.bot._monitor_tasks[ctx.guild.id] = asyncio.create_task(
-            self.bot.monitor.monitor_loop(state, on_track_end, on_empty, get_voice_members)
-        )
+        async def run_monitor() -> None:
+            try:
+                await self.bot.monitor.monitor_loop(state, on_track_end, on_empty, get_voice_members)
+            finally:
+                current = self.bot._monitor_tasks.get(guild_id)
+                if current is asyncio.current_task():
+                    self.bot._monitor_tasks.pop(guild_id, None)
+
+        self.bot._monitor_tasks[guild_id] = asyncio.create_task(run_monitor())
 
     async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState) -> None:
-        meta = self.bot.engine.get_track_metadata(state.current_track, state.collection_mode)
-        col = get_collection(state.collection_mode)
+        collection_id = state.current_collection_id or state.collection_mode
+        meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
+        col = get_collection(collection_id)
         title = meta.get("NAME", state.current_track.rsplit("/", 1)[-1])
         author = meta.get("AUTHOR", "")
         embed = now_playing_embed(
             title=title,
             author=author,
-            collection_name=col.name if col else state.collection_mode,
+            collection_name=col.name if col else collection_id,
             collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
@@ -376,7 +573,7 @@ class PlaybackCog(commands.Cog):
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
-            "collection_id": state.collection_mode,
+            "collection_id": collection_id,
         })
 
 
@@ -390,9 +587,7 @@ class CollectionCog(commands.Cog):
             return
         state = self.bot.get_state(ctx.guild.id)
         new_id = flip_collection(state.collection_mode)
-        state.collection_mode = new_id
-        col = get_collection(new_id)
-        await ctx.send(f"{col.flip_tag} **Switched to {col.name}**" if col else f"Switched to {new_id}")
+        await self._switch(ctx, new_id)
 
     @commands.command(aliases=["mode", "collection"])
     async def status(self, ctx: commands.Context) -> None:
@@ -423,7 +618,8 @@ class CollectionCog(commands.Cog):
         if not results:
             return await ctx.send(f"No results for `{query}`.")
         state.search_results = results
-        lines = [f"`{i+1}.` `{r.rsplit('/', 1)[-1]}`" for i, r in enumerate(results[:10])]
+        state.search_collection_id = state.collection_mode
+        lines = [self.bot.engine.describe_search_result(r, state.collection_mode, i + 1) for i, r in enumerate(results[:10])]
         await ctx.send("\n".join(lines))
 
     @commands.command(aliases=["c64", "sid"])
@@ -458,9 +654,56 @@ class CollectionCog(commands.Cog):
         if not ctx.guild:
             return
         state = self.bot.get_state(ctx.guild.id)
+        active = state.is_playing or bool(ctx.voice_client)
+        if active and (not ctx.author.voice or not ctx.author.voice.channel):
+            await ctx.send("Join a voice channel before switching active playback.")
+            return
+        if active and not self.bot.try_acquire_lease(ctx.guild):
+            owner = self.bot.playback_lease.owner_guild_name or "another server"
+            await ctx.send(f"Music is already playing in **{owner}**.")
+            return
+
+        if active:
+            await self.bot.engine.stop(state)
+            self.bot._stop_stream(ctx.guild.id)
+            self.bot._cancel_predownload(ctx.guild.id)
+            self.bot._cancel_monitor(ctx.guild.id)
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+
         state.collection_mode = collection_id
+        state.tracks = []
+        state.queue = []
+        state.queue_collection_ids = []
+        state.position = 0
+        state.current_track = ""
+        state.current_collection_id = ""
+        state.search_results = []
+        state.search_collection_id = ""
         col = get_collection(collection_id)
         await ctx.send(f"{col.flip_tag} **Switched to {col.name}**" if col else f"Switched to {collection_id}")
+        if not active:
+            return
+        try:
+            await ctx.author.voice.channel.connect()
+            state.voice_channel_id = ctx.author.voice.channel.id
+            track = self.bot.engine.start_radio(state, collection_id=collection_id, user_id=ctx.author.id)
+            if not track:
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                self.bot.release_lease(ctx.guild.id)
+                await ctx.send("No tracks in this collection.")
+                return
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._play_and_monitor(ctx, state)
+        except Exception as exc:
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._finish_playback(ctx, state, f"Failed to switch collection: {exc}")
+            else:
+                self.bot.release_lease(ctx.guild.id)
+                await ctx.send(f"Failed to switch collection: {exc}")
 
 
 class FavoritesCog(commands.Cog):
@@ -521,17 +764,33 @@ class FavoritesCog(commands.Cog):
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         if not tracks:
             return await ctx.send("No favorites yet.")
+        if not self.bot.try_acquire_lease(ctx.guild):
+            owner = self.bot.playback_lease.owner_guild_name or "another server"
+            return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        state.queue = [t["filepath"] for t in tracks]
-        random.shuffle(state.queue)
+        queued = [
+            (track["filepath"], track.get("collection_id") or state.collection_mode)
+            for track in tracks
+        ]
+        random.shuffle(queued)
+        state.queue = [filepath for filepath, _ in queued]
+        state.queue_collection_ids = [collection_id for _, collection_id in queued]
         state.position = 0
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-        await ctx.author.voice.channel.connect()
-        state.voice_channel_id = ctx.author.voice.channel.id
-        cog = self.bot.get_cog("PlaybackCog")
-        if cog:
-            await cog._play_and_monitor(ctx, state)
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+            await ctx.author.voice.channel.connect()
+            state.voice_channel_id = ctx.author.voice.channel.id
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._play_and_monitor(ctx, state)
+        except Exception as exc:
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._finish_playback(ctx, state, f"Failed to play favorites: {exc}")
+            else:
+                self.bot.release_lease(ctx.guild.id)
+                await ctx.send(f"Failed to play favorites: {exc}")
 
     @commands.command()
     async def blk(self, ctx: commands.Context) -> None:
@@ -576,17 +835,33 @@ class FavoritesCog(commands.Cog):
         playlist = lib.load(name)
         if not playlist:
             return await ctx.send(f"Playlist `{name}` not found.")
+        if not self.bot.try_acquire_lease(ctx.guild):
+            owner = self.bot.playback_lease.owner_guild_name or "another server"
+            return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        state.queue = [t["filepath"] for t in playlist.get("tracks", [])]
-        random.shuffle(state.queue)
+        queued = [
+            (track["filepath"], track.get("collection_id") or state.collection_mode)
+            for track in playlist.get("tracks", [])
+        ]
+        random.shuffle(queued)
+        state.queue = [filepath for filepath, _ in queued]
+        state.queue_collection_ids = [collection_id for _, collection_id in queued]
         state.position = 0
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-        await ctx.author.voice.channel.connect()
-        state.voice_channel_id = ctx.author.voice.channel.id
-        cog = self.bot.get_cog("PlaybackCog")
-        if cog:
-            await cog._play_and_monitor(ctx, state)
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+            await ctx.author.voice.channel.connect()
+            state.voice_channel_id = ctx.author.voice.channel.id
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._play_and_monitor(ctx, state)
+        except Exception as exc:
+            cog = self.bot.get_cog("PlaybackCog")
+            if cog:
+                await cog._finish_playback(ctx, state, f"Failed to load playlist: {exc}")
+            else:
+                self.bot.release_lease(ctx.guild.id)
+                await ctx.send(f"Failed to load playlist: {exc}")
 
     @commands.command(aliases=["plist"])
     async def playlists(self, ctx: commands.Context) -> None:
