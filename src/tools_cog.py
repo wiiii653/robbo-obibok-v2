@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import discord
 from discord.ext import commands
 
 from .collection_loader import get_collection
 
+if TYPE_CHECKING:
+    from .bot import ObibokBot
+
 
 class ToolsCog(commands.Cog):
-    def __init__(self, bot) -> None:
-        self.bot = bot
+    def __init__(self, bot: ObibokBot) -> None:
+        self.bot: ObibokBot = bot
 
     @commands.command()
     async def stats(self, ctx: commands.Context) -> None:

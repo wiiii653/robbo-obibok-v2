@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import discord
 from discord.ext import commands
 
 from .collection_loader import flip_collection, get_collection, load_raw_paths
 from .embeds import status_embed
 
+if TYPE_CHECKING:
+    from .bot import ObibokBot
+
 
 class CollectionCog(commands.Cog):
-    def __init__(self, bot) -> None:
-        self.bot = bot
+    def __init__(self, bot: ObibokBot) -> None:
+        self.bot: ObibokBot = bot
 
     @commands.command(aliases=["switch", "toggle", "fl"])
     async def flip(self, ctx: commands.Context) -> None:

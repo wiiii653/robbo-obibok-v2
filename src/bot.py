@@ -12,6 +12,8 @@ from discord.ext import commands
 from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
 from .lease import PlaybackLease
 from .models import PlaybackState
+from .monitor import TrackMonitor
+from .playback import PlaybackEngine
 from .stream import MonitorAudioSource
 
 logger = logging.getLogger(__name__)
@@ -20,8 +22,8 @@ logger = logging.getLogger(__name__)
 class ObibokBot(commands.Bot):
     def __init__(
         self,
-        engine,
-        monitor,
+        engine: PlaybackEngine,
+        monitor: TrackMonitor,
         root_dir: str,
         sink_name: str = "robbo_bot",
         command_prefix: str = "!",
@@ -36,14 +38,14 @@ class ObibokBot(commands.Bot):
         # NOTE: members intent requires manual enable in Discord Developer Portal
         # intents.members = True
         super().__init__(command_prefix=command_prefix, intents=intents)
-        self.engine = engine
-        self.monitor = monitor
-        self.root_dir = root_dir
-        self.sink_name = sink_name
-        self.guild_id = guild_id
-        self.auto_start_channel = auto_start_channel
-        self.default_loop = default_loop
-        self.playback_lease = PlaybackLease()
+        self.engine: PlaybackEngine = engine
+        self.monitor: TrackMonitor = monitor
+        self.root_dir: str = root_dir
+        self.sink_name: str = sink_name
+        self.guild_id: int | None = guild_id
+        self.auto_start_channel: str = auto_start_channel
+        self.default_loop: bool = default_loop
+        self.playback_lease: PlaybackLease = PlaybackLease()
         self._states: dict[int, PlaybackState] = {}
         self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
