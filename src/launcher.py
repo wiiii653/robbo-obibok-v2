@@ -47,6 +47,17 @@ def create_bot(config: AppConfig) -> ObibokBot:
 
     audio = AudioController(sink_name=config.audio.sink_name)
     audio.setup()
+    # Load per-format volumes from config (merges over defaults)
+    import yaml
+    try:
+        raw_cfg = yaml.safe_load(Path(root_dir, "config.yaml").read_text()) or {}
+        fv = raw_cfg.get("format_volumes", {})
+        if isinstance(fv, dict) and fv:
+            from .audio import load_format_volumes_from_dict
+            load_format_volumes_from_dict(fv)
+            logger.info("Loaded format_volumes from config: %s", fv)
+    except Exception as exc:
+        logger.warning("Failed to load format_volumes from config: %s", exc)
     favorites = Favorites(root_dir)
     blacklist = Blacklist(root_dir)
     engine = PlaybackEngine(

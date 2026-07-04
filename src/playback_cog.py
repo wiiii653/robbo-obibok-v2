@@ -110,7 +110,7 @@ class PlaybackCog(commands.Cog):
             return
         if self.bot.guild_id is not None and member.guild.id != self.bot.guild_id:
             return
-        if before.channel is not None:
+        if before.channel == after.channel:
             return
         if after.channel is None:
             return
