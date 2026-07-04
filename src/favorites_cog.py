@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import random
 from typing import TYPE_CHECKING
 
@@ -77,8 +78,12 @@ class FavoritesCog(commands.Cog):
                 name = t["filepath"].rsplit("/", 1)[-1]
             author_s = f" — {t['author']}" if t.get("author") else ""
             lines.append(f"`{i}.` {name}{author_s}")
+        first = True
         for chunk_start in range(0, len(lines), 15):
+            if not first:
+                await asyncio.sleep(0.5)  # avoid Discord rate-limit burst
             await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
+            first = False
 
     @commands.command(aliases=["fp"])
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
