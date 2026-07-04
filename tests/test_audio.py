@@ -217,6 +217,23 @@ Sink Input #42
 
 
 class TestPlayerLifecycle:
+    @patch("src.audio.time.sleep", return_value=None)
+    @patch("src.audio.subprocess.Popen")
+    @patch("src.audio._audtool_call")
+    def test_start_player_cleans_up_on_timeout(self, mock_tool, mock_popen, mock_sleep):
+        proc = MagicMock()
+        proc.poll.return_value = None
+        mock_popen.return_value = proc
+        mock_tool.return_value = False
+        from src.audio import start_player
+        import src.audio
+
+        src.audio._audacious_ready = False
+
+        assert start_player("test_sink") is False
+        proc.terminate.assert_called_once()
+        proc.wait.assert_called_once_with(timeout=5)
+
     @patch("src.audio.subprocess.run")
     @patch("src.audio._audtool_call")
     def test_kill_player(self, mock_tool, mock_run):

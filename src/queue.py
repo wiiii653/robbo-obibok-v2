@@ -53,12 +53,13 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
     if not isinstance(queue, list) or not all(isinstance(item, str) for item in queue):
         return False
     queue_collection_ids = saved.get("queue_collection_ids")
-    if queue_collection_ids is not None and (
-        not isinstance(queue_collection_ids, list)
-        or len(queue_collection_ids) != len(queue)
-        or any(item != collection_mode for item in queue_collection_ids)
-    ):
-        return False
+    if queue_collection_ids is not None:
+        if (
+            not isinstance(queue_collection_ids, list)
+            or len(queue_collection_ids) != len(queue)
+            or not all(isinstance(item, str) and item for item in queue_collection_ids)
+        ):
+            return False
     return all(item in tracks for item in queue)
 
 

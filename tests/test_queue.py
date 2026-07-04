@@ -130,7 +130,7 @@ class TestQueuePersistence:
         assert can_restore_queue(saved, ["a.sap", "b.sap", "c.sap"], "asma") is True
         assert can_restore_queue(saved, ["c.sap"], "asma") is False
 
-    def test_mixed_collection_queue_is_not_restored_as_radio(self):
+    def test_mixed_collection_queue_can_be_restored(self):
         saved = {
             "queue": ["a.sap", "b.sid"],
             "queue_collection_ids": ["asma", "hvsc"],
@@ -138,7 +138,7 @@ class TestQueuePersistence:
             "is_looping": False,
             "collection_mode": "asma",
         }
-        assert can_restore_queue(saved, ["a.sap", "b.sid"], "asma") is False
+        assert can_restore_queue(saved, ["a.sap", "b.sid"], "asma") is True
 
 
 class TestBlacklist:

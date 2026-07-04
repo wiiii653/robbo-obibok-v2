@@ -77,7 +77,7 @@ class PlaybackEngine:
     async def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
-        paths = await asyncio.to_thread(load_raw_paths, state.collection_mode, self.root_dir)
+        paths = load_raw_paths(state.collection_mode, self.root_dir)
         if not paths:
             return None
         state.tracks = paths
@@ -87,7 +87,7 @@ class PlaybackEngine:
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
         if state.guild_id:
-            saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
+            saved = load_queue(state.guild_id, self.root_dir)
             if can_restore_queue(saved, filtered, state.collection_mode):
                 restore_queue(saved, state)
                 restored = True
@@ -101,9 +101,9 @@ class PlaybackEngine:
             state.position = 0
         track = current_track(state)
         if track:
-            await asyncio.to_thread(self.audio.set_collection_volume, state.collection_mode)
+            self.audio.set_collection_volume(state.collection_mode)
             if state.guild_id:
-                await asyncio.to_thread(save_queue, state, self.root_dir)
+                save_queue(state, self.root_dir)
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
@@ -113,9 +113,9 @@ class PlaybackEngine:
         playback_path = await self._resolve_track_path(state, track)
         if playback_path is None:
             return None
-        playback_path = await asyncio.to_thread(self._prepare_subsong_playback, state, playback_path)
-        await asyncio.to_thread(self.audio.set_collection_volume, self._collection_for_position(state))
-        success = await asyncio.to_thread(self.audio.play, str(playback_path))
+        playback_path = self._prepare_subsong_playback(state, playback_path)
+        self.audio.set_collection_volume(self._collection_for_position(state))
+        success = self.audio.play(str(playback_path))
         if success:
             state.current_track = track
             state.current_collection_id = self._collection_for_position(state)
@@ -140,7 +140,7 @@ class PlaybackEngine:
         return await self.play_track(state)
 
     async def stop(self, state: PlaybackState) -> None:
-        await asyncio.to_thread(self.audio.stop)
+        self.audio.stop()
         state.is_playing = False
         state.current_track = ""
         state.current_collection_id = ""
@@ -160,7 +160,7 @@ class PlaybackEngine:
 
     async def clear(self, state: PlaybackState) -> None:
         clear_queue(state)
-        await asyncio.to_thread(self.audio.stop)
+        self.audio.stop()
         state.is_playing = False
         state.current_track = ""
         state.current_collection_id = ""
@@ -306,6 +306,6 @@ class PlaybackEngine:
 
     async def _download_remote_track(self, state: PlaybackState, track: str) -> str | None:
         if uses_module_cache(track):
-            return await asyncio.to_thread(download_modarchive_module, track, root_dir=self.root_dir)
+            return download_modarchive_module(track, root_dir=self.root_dir)
         output_path = remote_cache_path(self.root_dir, track)
-        return await asyncio.to_thread(download_remote_track, track, output_path)
+        return download_remote_track(track, output_path)
