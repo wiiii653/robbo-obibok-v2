@@ -117,7 +117,7 @@ class PlaybackEngine:
             return None
         playback_path = self._prepare_subsong_playback(state, playback_path)
         self.audio.set_volume_for_playback(str(playback_path))
-        success = self.audio.play(str(playback_path))
+        success = await asyncio.to_thread(self.audio.play, str(playback_path))
         if success:
             state.current_track = track
             state.current_collection_id = self._collection_for_position(state)
