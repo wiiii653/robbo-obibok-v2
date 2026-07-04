@@ -24,9 +24,14 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        # Resolve collection from filepath rather than trusting saved state
-        resolved_col = resolve_collection_for_filepath(msg_data["filepath"])
-        collection_id = resolved_col or msg_data["collection_id"]
+        # Resolve collection from filepath (only for unambiguous extensions)
+        filepath = msg_data["filepath"]
+        ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+        if ext in ("sid", "sap", "ay", "ym"):
+            resolved_col = resolve_collection_for_filepath(filepath)
+            collection_id = resolved_col or msg_data["collection_id"]
+        else:
+            collection_id = msg_data["collection_id"] or resolve_collection_for_filepath(filepath) or ""
         meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
         title = meta.get("NAME", msg_data["filepath"].rsplit("/", 1)[-1].rsplit(".", 1)[0])
         self.bot.engine.favorites.add(
@@ -95,10 +100,18 @@ class FavoritesCog(commands.Cog):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        queued = [
-            (track["filepath"], resolve_collection_for_filepath(track["filepath"]) or track.get("collection_id") or state.collection_mode)
-            for track in filtered
-        ]
+        queued = []
+        for track in filtered:
+            filepath = track["filepath"]
+            saved_cid = track.get("collection_id")
+            ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+            # Unambiguous extensions: sid/sap/ay/ym — resolve from filepath
+            # Ambiguous (mod/xm/s3m/it): trust saved collection_id
+            if ext in ("sid", "sap", "ay", "ym"):
+                cid = resolve_collection_for_filepath(filepath) or saved_cid or state.collection_mode
+            else:
+                cid = saved_cid or resolve_collection_for_filepath(filepath) or state.collection_mode
+            queued.append((filepath, cid))
         playback_cog = self.bot.get_cog("PlaybackCog")
         if playback_cog:
             playback_cog._set_queue(state, queued, shuffle=True)
