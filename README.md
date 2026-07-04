@@ -21,7 +21,7 @@ Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-gard
 
 ## What's New in v2
 
-Complete rewrite with a **flat, minimal architecture** — 16 source modules instead of 76, 150+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
+Complete rewrite with a **flat, minimal architecture** — 17 source modules instead of 76, 150+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
 
 ## Features
 
@@ -68,7 +68,7 @@ Complete rewrite with a **flat, minimal architecture** — 16 source modules ins
 | `!mod` / `!modarchive` / `!modules` | Switch to **ModArchive tracker modules** (~175 000) |
 | `!ay` / `!spectrum` / `!zx` | Switch to **ZX Spectrum AY** (~4 500) |
 | `!ym` / `!atarist` | Switch to **Atari ST YM** (~7 200) |
-| `!tiny` / `!tm` | Switch to **Tiny Music modules** (~418) |
+| `!tiny` / `!tm` | Switch to **Tiny Music modules** (~550) |
 | `!kgen` / `!keygen` / `!k` | Switch to **Keygen Music** (~4 800) |
 | **Favorites & Blacklist** | |
 | `!favorites` / `!favs` | Show your reaction-based favorites playlist |
@@ -97,10 +97,10 @@ React with **any emoji** to a Now Playing embed to save the track to your favori
 | **AY** | `.ay` | 4 550 | Local `archiwum/ay/` |
 | **YM** | `.ym` | 7 266 | Local `archiwum/ym/` |
 | **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 175 000+ | Local `archiwum/modarchive/` |
-| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 548 | Local `archiwum/tiny/` |
+| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | ~550 | Local `archiwum/tiny/` |
 | **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 4 843 | Local `archiwum/kgen/` |
 
-All archives are served from local disk — no external HTTP calls during playback.
+Local archives are served from disk; remote URLs are cached before playback.
 
 ## Quick Start
 
@@ -232,11 +232,12 @@ auto:
 
 ```
 robbo-obibok-v2/
-├── src/                     # Source modules (16 files)
+├── src/                     # Source modules (17 files)
 │   ├── models.py            # Collection and PlaybackState
 │   ├── persistence.py       # JSON file I/O
 │   ├── collection_loader.py # Collection registry, index loaders, metadata
 │   ├── audio.py             # PulseAudio + Audacious control
+│   ├── stream.py            # Voice stream source
 │   ├── queue.py             # Queue shuffle, blacklist, persistence
 │   ├── favorites.py         # Reaction favorites + named playlists
 │   ├── playback.py          # Playback orchestrator
@@ -257,9 +258,6 @@ robbo-obibok-v2/
 ├── pyproject.toml           # Dependencies + tool config
 ├── Makefile                 # Build/test commands
 ├── run_bot.sh               # Entrypoint wrapper
-├── AGENTS.md                # AI coding agent instructions
-├── BUILD_PLAN.md            # Architecture & build plan
-└── .env.example             # Token template
 ```
 
 ## Audio Effects
