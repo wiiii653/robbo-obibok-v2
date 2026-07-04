@@ -175,8 +175,8 @@ class TestMonitorTickBranches:
         })()
         monitor = TrackMonitor(audio=audio)
         monitor._last_output = 10  # simulate output decreasing = new track start
-        monitor._last_track = "test.sap"  # same track so no track-change reset
-        state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
+        monitor._last_track = "test.mod"  # same track so no track-change reset
+        state = type("State", (), {"is_playing": True, "current_track": "test.mod", "queue": ["test.mod"], "position": 0})()
         ended = []
 
         async def on_end(s):

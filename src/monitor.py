@@ -153,6 +153,12 @@ class TrackMonitor:
 
         is_console = is_console_format(track)
         if elapsed < self._last_output:
+            if is_console:
+                # console formats (sid, sap, ay, ym, ...) often report
+                # unreliable output_length — ignore drops entirely and
+                # rely on is_playing() + timeout instead
+                self._last_output = elapsed
+                return
             now_loop = asyncio.get_running_loop().time()
             if self._last_output > 10 and elapsed < 5:
                 drop_confirmed, self._drop_confirmed_since = should_confirm_output_drop(
