@@ -39,11 +39,19 @@ class FavoritesCog(commands.Cog):
         else:
             collection_id = msg_data["collection_id"] or resolve_collection_for_filepath(filepath) or ""
         meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
-        title = meta.get("NAME", msg_data["filepath"].rsplit("/", 1)[-1].rsplit(".", 1)[0])
+        raw_title = meta.get("NAME", "")
+        if not raw_title:
+            filepath = msg_data["filepath"]
+            # ModArchive download URLs have no real filename — extract module ID
+            if "downloads.php?moduleid=" in filepath:
+                mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
+                raw_title = f"ModArchive #{mod_id}"
+            else:
+                raw_title = filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0]
         self.bot.engine.favorites.add(
             payload.user_id,
-            msg_data["filepath"],
-            title,
+            msg_data['filepath'],
+            raw_title,
             collection_id,
             meta.get("AUTHOR", ""),
         )
@@ -71,9 +79,15 @@ class FavoritesCog(commands.Cog):
         lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
         for i, t in enumerate(tracks, 1):
             name = t.get("title", "")
-            if not name:
-                meta = self.bot.engine.get_track_metadata(t["filepath"], t.get("collection_id", ""))
-                name = meta.get("NAME", "")
+            if not name or name == "downloads":
+                filepath = t["filepath"]
+                # Clean up existing modarchive titles saved as "downloads"
+                if "downloads.php?moduleid=" in filepath:
+                    mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
+                    name = f"ModArchive #{mod_id}"
+                else:
+                    meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
+                    name = meta.get("NAME", "")
             if not name:
                 name = t["filepath"].rsplit("/", 1)[-1]
             author_s = f" — {t['author']}" if t.get("author") else ""
@@ -81,7 +95,7 @@ class FavoritesCog(commands.Cog):
         first = True
         for chunk_start in range(0, len(lines), 15):
             if not first:
-                await asyncio.sleep(0.5)  # avoid Discord rate-limit burst
+                await asyncio.sleep(1.5)  # avoid Discord rate-limit burst (5 msg/5s per channel)
             await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
             first = False
 
