@@ -65,11 +65,12 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
 def next_track(state: PlaybackState) -> str | None:
     if not state.queue:
         return None
-    if state.is_looping:
-        return state.queue[state.position]
     next_position = state.position + 1
     if next_position >= len(state.queue):
-        return None
+        if state.is_looping:
+            next_position = 0
+        else:
+            return None
     state.position = next_position
     return state.queue[state.position]
 

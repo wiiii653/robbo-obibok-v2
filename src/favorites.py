@@ -15,10 +15,13 @@ def _normalize_track_entry(entry: object) -> dict | None:
     if not isinstance(filepath, str) or not filepath:
         return None
     title = entry.get("title", "")
+    author = entry.get("author", "")
     collection_id = entry.get("collection_id", "")
     added_at = entry.get("added_at", 0.0)
     if not isinstance(title, str):
         title = ""
+    if not isinstance(author, str):
+        author = ""
     if not isinstance(collection_id, str):
         collection_id = ""
     if not isinstance(added_at, (int, float)) or isinstance(added_at, bool):
@@ -26,6 +29,7 @@ def _normalize_track_entry(entry: object) -> dict | None:
     return {
         "filepath": filepath,
         "title": title,
+        "author": author,
         "collection_id": collection_id,
         "added_at": float(added_at),
     }
@@ -70,14 +74,28 @@ class Favorites:
     def _save(self) -> None:
         save_json(self._filepath, self._data)
 
-    def toggle(self, user_id: int, filepath: str, title: str = "", collection_id: str = "") -> bool:
+    def toggle(
+        self,
+        user_id: int,
+        filepath: str,
+        title: str = "",
+        collection_id: str = "",
+        author: str = "",
+    ) -> bool:
         if self.has_track(user_id, filepath, collection_id):
             self.remove(user_id, filepath, collection_id)
             return False
-        self.add(user_id, filepath, title, collection_id)
+        self.add(user_id, filepath, title, collection_id, author)
         return True
 
-    def add(self, user_id: int, filepath: str, title: str = "", collection_id: str = "") -> bool:
+    def add(
+        self,
+        user_id: int,
+        filepath: str,
+        title: str = "",
+        collection_id: str = "",
+        author: str = "",
+    ) -> bool:
         self._ensure_loaded()
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
@@ -86,13 +104,20 @@ class Favorites:
         tracks.append({
             "filepath": filepath,
             "title": title,
+            "author": author,
             "collection_id": collection_id,
             "added_at": time.time(),
         })
         self._save()
         return True
 
-    def remove(self, user_id: int, filepath: str, collection_id: str = "") -> bool:
+    def remove(
+        self,
+        user_id: int,
+        filepath: str,
+        collection_id: str = "",
+        author: str = "",
+    ) -> bool:
         self._ensure_loaded()
         tracks = self._data.get(str(user_id), [])
         existing = next(

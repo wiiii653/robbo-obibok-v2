@@ -11,19 +11,19 @@ from .models import PlaybackState
 
 logger = logging.getLogger(__name__)
 
-GME_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
+CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
 DEFAULT_TIMEOUT = 600
-GME_TIMEOUT = 600
+CONSOLE_TIMEOUT = 600
 
 
-def is_gme_format(filepath: str) -> bool:
+def is_console_format(filepath: str) -> bool:
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
-    return ext in GME_EXTENSIONS
-
-
-def compute_timeout(song_len: int, *, is_gme_format: bool = False) -> int:
-    if is_gme_format:
-        return GME_TIMEOUT
+    return ext in CONSOLE_EXTENSIONS
+ 
+ 
+def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
+    if is_console_format:
+        return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
         return song_len + 15
     return DEFAULT_TIMEOUT
@@ -36,9 +36,9 @@ def should_confirm_output_drop(
     now: float,
     grace_seconds: int,
     *,
-    is_gme_format: bool,
+    is_console_format: bool,
 ) -> tuple[bool, float | None]:
-    if is_gme_format:
+    if is_console_format:
         return False, None
     if last_output_len > 10 and current_secs < 5:
         if drop_confirmed_since is None:
@@ -151,7 +151,7 @@ class TrackMonitor:
             self._last_output = 0
             self._drop_confirmed_since = None
 
-        is_gme = is_gme_format(track)
+        is_console = is_console_format(track)
         if elapsed < self._last_output:
             now_loop = asyncio.get_running_loop().time()
             if self._last_output > 10 and elapsed < 5:
@@ -161,7 +161,7 @@ class TrackMonitor:
                     self._drop_confirmed_since,
                     now_loop,
                     3,
-                    is_gme_format=is_gme,
+                    is_console_format=is_console,
                 )
                 if drop_confirmed:
                     logger.info("Track ended (confirmed output drop %d->%d)", self._last_output, elapsed)
@@ -178,7 +178,7 @@ class TrackMonitor:
         self._last_output = elapsed
 
         total = await asyncio.to_thread(self.audio.song_length)
-        timeout = compute_timeout(total, is_gme_format=is_gme)
+        timeout = compute_timeout(total, is_console_format=is_console)
         if elapsed >= timeout:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
             state.is_playing = False

@@ -56,6 +56,10 @@ class PlaybackEngine:
 
     def _prepare_subsong_playback(self, state: PlaybackState, track_path: Path) -> Path:
         track_key = str(track_path)
+        ext = track_key.rsplit(".", 1)[-1].lower() if "." in track_key else ""
+        # AY/YM are now handled natively by Audacious console.so — skip ffmpeg conversion
+        if ext in ("ay", "ym"):
+            return track_path
         if state.subsong_path != track_key:
             self._clear_subsong_state(state)
             state.subsong_path = track_key
@@ -70,10 +74,10 @@ class PlaybackEngine:
             return Path(wav_path) if Path(wav_path).exists() else track_path
         return track_path
 
-    def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
+    async def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
-        paths = load_raw_paths(state.collection_mode, self.root_dir)
+        paths = await asyncio.to_thread(load_raw_paths, state.collection_mode, self.root_dir)
         if not paths:
             return None
         state.tracks = paths
@@ -83,7 +87,7 @@ class PlaybackEngine:
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
         if state.guild_id:
-            saved = load_queue(state.guild_id, self.root_dir)
+            saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
             if can_restore_queue(saved, filtered, state.collection_mode):
                 restore_queue(saved, state)
                 restored = True
@@ -97,9 +101,9 @@ class PlaybackEngine:
             state.position = 0
         track = current_track(state)
         if track:
-            self.audio.set_collection_volume(state.collection_mode)
+            await asyncio.to_thread(self.audio.set_collection_volume, state.collection_mode)
             if state.guild_id:
-                save_queue(state, self.root_dir)
+                await asyncio.to_thread(save_queue, state, self.root_dir)
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
@@ -195,11 +199,11 @@ class PlaybackEngine:
     async def predownload_next(self, state: PlaybackState) -> str | None:
         if not state.queue:
             return None
-        if state.is_looping:
-            next_index = state.position
-        else:
-            next_index = state.position + 1
-            if next_index >= len(state.queue):
+        next_index = state.position + 1
+        if next_index >= len(state.queue):
+            if state.is_looping:
+                next_index = 0
+            else:
                 return None
         next_track = state.queue[next_index]
         if not is_remote_track(next_track):
@@ -257,7 +261,8 @@ class PlaybackEngine:
     def toggle_favorite(self, user_id: int, filepath: str, collection_id: str) -> bool:
         meta = self.get_track_metadata(filepath, collection_id)
         title = meta.get("NAME", filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0])
-        return self.favorites.toggle(user_id, filepath, title, collection_id)
+        author = meta.get("AUTHOR", "")
+        return self.favorites.toggle(user_id, filepath, title, collection_id, author)
 
     def blacklist_current(self, user_id: int, state: PlaybackState) -> bool:
         track = current_track(state)

@@ -25,8 +25,8 @@ class TestNextTrack:
 
     def test_next_track_wraps_with_loop(self):
         state = PlaybackState(queue=["a.sap", "b.sap"], position=1, is_looping=True)
-        assert next_track(state) == "b.sap"
-        assert state.position == 1
+        assert next_track(state) == "a.sap"  # wraps to position 0
+        assert state.position == 0
 
     def test_next_track_returns_none_at_end(self):
         state = PlaybackState(queue=["a.sap", "b.sap"], position=1)
@@ -37,9 +37,10 @@ class TestNextTrack:
         state = PlaybackState()
         assert next_track(state) is None
 
-    def test_next_track_loop_stays_on_current(self):
+    def test_next_track_loop_wraps_single_track(self):
         state = PlaybackState(queue=["a.sap"], position=0, is_looping=True)
-        assert next_track(state) == "a.sap"
+        assert next_track(state) == "a.sap"  # wraps back to start
+        assert state.position == 0
 
 
 class TestCurrentTrack:

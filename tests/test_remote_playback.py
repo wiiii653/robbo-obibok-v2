@@ -74,11 +74,12 @@ def test_predownload_next_caches_remote_track(tmp_path, monkeypatch):
     assert state.predownload_path == cached
 
 
-def test_predownload_loop_targets_current_track(tmp_path):
+def test_predownload_loop_targets_next_track(tmp_path):
     engine = _make_engine(tmp_path)
     current = "https://example.com/current.mod"
+    next_t = "https://example.com/next.mod"
     state = PlaybackState(
-        queue=[current, "https://example.com/next.mod"],
+        queue=[current, next_t],
         position=0,
         is_looping=True,
     )
@@ -86,10 +87,10 @@ def test_predownload_loop_targets_current_track(tmp_path):
 
     async def fake_download(state, track):
         downloaded.append(track)
-        path = tmp_path / "current.mod"
+        path = tmp_path / "next.mod"
         path.write_bytes(b"music")
         return str(path)
 
     engine._download_remote_track = fake_download  # type: ignore[assignment]
     asyncio.run(engine.predownload_next(state))
-    assert downloaded == [current]
+    assert downloaded == [next_t]  # now predownloads next track, not current

@@ -16,7 +16,7 @@ audio:
 
 # Playback
 playback:
-  loop: false  # true repeats the current track
+  loop: false  # true = loop queue (wrap to start when playlist ends)
   shuffle: true
 
 # Archive storage path (relative to project root)

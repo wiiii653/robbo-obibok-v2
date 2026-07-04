@@ -30,7 +30,7 @@ Complete rewrite with a **flat, minimal architecture** — 17 source modules ins
 - 🎼 **Rich metadata** — track name, composer, copyright from headers
 - ❤️ **Favorites playlist** — react to any Now Playing embed to save/remove tracks
 - ⏭️ **Skip**, **Stop**, **Now Playing**, **Stats**, **Search**
-- 🔄 **Auto-advance** — moves to next track when current ends, with GME-aware monitoring
+- 🔄 **Auto-advance** — moves to next track when current ends, with chiptune-aware monitoring
 - 🧩 **Subsong playback** — demoscene/module tracks advance through embedded parts
 - 💾 **Queue persistence** — restores compatible queues across restarts
 - 🌐 **Remote playback cache** — direct URLs are downloaded into `var/downloads/` before playback
