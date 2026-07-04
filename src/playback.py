@@ -107,8 +107,8 @@ class PlaybackEngine:
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
-        item = current_track(state)
-        if not item:
+        track = current_track(state)
+        if not track:
             return None
         playback_path = await self._resolve_track_path(state, track)
         if playback_path is None:
