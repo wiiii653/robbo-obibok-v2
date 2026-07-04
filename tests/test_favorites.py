@@ -62,13 +62,17 @@ class TestFavorites:
         assert favs.count(2) == 1
         assert favs.has_track(1, "b.sap") is False
 
-    def test_same_path_in_different_collections_is_distinct(self, tmp_path):
+    def test_same_path_dedup_by_filepath(self, tmp_path):
         favs = Favorites(str(tmp_path))
         assert favs.toggle(1, "song.mod", collection_id="tiny") is True
-        assert favs.toggle(1, "song.mod", collection_id="kgen") is True
-        assert favs.count(1) == 2
-        assert favs.has_track(1, "song.mod", "tiny") is True
-        assert favs.has_track(1, "song.mod", "kgen") is True
+        # Same filepath from different collection → already favorited, removes it
+        assert favs.toggle(1, "song.mod", collection_id="kgen") is False
+        assert favs.count(1) == 0
+        # Add again — clean slate
+        assert favs.add(1, "song.mod", collection_id="tiny") is True
+        assert favs.add(1, "song.mod", collection_id="kgen") is False  # duplicate, blocked
+        assert favs.count(1) == 1
+        assert favs.has_track(1, "song.mod") is True
 
 
 class TestPlaylistLibrary:

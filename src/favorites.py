@@ -67,7 +67,16 @@ class Favorites:
                 if not isinstance(value, list):
                     continue
                 tracks = [item for item in (_normalize_track_entry(entry) for entry in value) if item]
-                normalized[key] = tracks
+                # Dedup by filepath — keep last entry per unique filepath
+                seen: set[str] = set()
+                deduped: list[dict] = []
+                for t in reversed(tracks):
+                    fp = t.get("filepath", "")
+                    if fp and fp not in seen:
+                        seen.add(fp)
+                        deduped.append(t)
+                deduped.reverse()
+                normalized[key] = deduped
             self._data = normalized
         self._loaded = True
 
@@ -125,7 +134,6 @@ class Favorites:
                 track
                 for track in tracks
                 if track.get("filepath") == filepath
-                and (not collection_id or track.get("collection_id", "") == collection_id)
             ),
             None,
         )
@@ -144,7 +152,6 @@ class Favorites:
         tracks = self._data.get(str(user_id), [])
         return any(
             track.get("filepath") == filepath
-            and (not collection_id or track.get("collection_id", "") == collection_id)
             for track in tracks
         )
 
