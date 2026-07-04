@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
 class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
-        self._last_favs_call: dict[int, float] = {}
+        self._processing_favs: set[int] = set()
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
@@ -77,44 +76,45 @@ class FavoritesCog(commands.Cog):
     @commands.command(aliases=["favs"])
     async def favorites(self, ctx: commands.Context) -> None:
         logger = logging.getLogger(__name__)
-        # Dedup: skip if same user called !favs within 3s
-        now = time.time()
-        last_call = self._last_favs_call.get(ctx.author.id, 0)
-        if now - last_call < 3:
-            logger.warning("!favs dedup: skipping duplicate call from %s (%.1fs ago)", ctx.author.id, now - last_call)
+        # Dedup: skip if already processing !favs for this user (Discord may deliver the command twice)
+        uid = ctx.author.id
+        if uid in self._processing_favs:
+            logger.warning("!favs dedup: already processing for %s, skipping duplicate", uid)
             return
-        self._last_favs_call[ctx.author.id] = now
-
-        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
-        logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
-        if not tracks:
-            return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
-        lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
-        downloads_seen = 0
-        for i, t in enumerate(tracks, 1):
-            name = t.get("title", "")
-            if not name or name == "downloads":
-                filepath = t["filepath"]
-                logger.warning("!favs BAD title at [%d]: title=%r fp=%s", i, name, filepath)
-                downloads_seen += 1
-                # Clean up existing modarchive titles saved as "downloads"
-                if "downloads.php?moduleid=" in filepath:
-                    mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
-                    name = f"ModArchive #{mod_id}"
-                else:
-                    meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
-                    name = meta.get("NAME", "")
-            if not name:
-                name = t["filepath"].rsplit("/", 1)[-1]
-            author_s = f" — {t['author']}" if t.get("author") else ""
-            lines.append(f"`{i}.` {name}{author_s}")
-        logger.info("!favs sending %d chunks (%d bad titles)", (len(lines) + 14) // 15, downloads_seen)
-        first = True
-        for chunk_start in range(0, len(lines), 15):
-            if not first:
-                await asyncio.sleep(1.5)  # avoid Discord rate-limit burst (5 msg/5s per channel)
-            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
-            first = False
+        self._processing_favs.add(uid)
+        try:
+            tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+            logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
+            if not tracks:
+                return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
+            lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
+            downloads_seen = 0
+            for i, t in enumerate(tracks, 1):
+                name = t.get("title", "")
+                if not name or name == "downloads":
+                    filepath = t["filepath"]
+                    logger.warning("!favs BAD title at [%d]: title=%r fp=%s", i, name, filepath)
+                    downloads_seen += 1
+                    # Clean up existing modarchive titles saved as "downloads"
+                    if "downloads.php?moduleid=" in filepath:
+                        mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
+                        name = f"ModArchive #{mod_id}"
+                    else:
+                        meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
+                        name = meta.get("NAME", "")
+                if not name:
+                    name = t["filepath"].rsplit("/", 1)[-1]
+                author_s = f" — {t['author']}" if t.get("author") else ""
+                lines.append(f"`{i}.` {name}{author_s}")
+            logger.info("!favs sending %d chunks (%d bad titles)", (len(lines) + 14) // 15, downloads_seen)
+            first = True
+            for chunk_start in range(0, len(lines), 15):
+                if not first:
+                    await asyncio.sleep(1.5)
+                await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
+                first = False
+        finally:
+            self._processing_favs.discard(uid)
 
     @commands.command(aliases=["fp"])
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
