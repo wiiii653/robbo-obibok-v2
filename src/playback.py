@@ -104,7 +104,6 @@ class PlaybackEngine:
             state.position = 0
         track = current_track(state)
         if track:
-            self.audio.set_collection_volume(state.collection_mode)
             if state.guild_id:
                 save_queue(state, self.root_dir)
         return track
@@ -117,7 +116,7 @@ class PlaybackEngine:
         if playback_path is None:
             return None
         playback_path = self._prepare_subsong_playback(state, playback_path)
-        self.audio.set_collection_volume(self._collection_for_position(state))
+        self.audio.set_volume_for_playback(str(playback_path))
         success = self.audio.play(str(playback_path))
         if success:
             state.current_track = track

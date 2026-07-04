@@ -20,6 +20,16 @@ COLLECTION_VOLUMES: dict[str, int] = {
     col.id: col.volume for col in COLLECTIONS.values()
 }
 
+# Format-based volume override — takes precedence over collection volumes.
+# Extension → volume percentage (default: 100)
+FORMAT_VOLUMES: dict[str, int] = {
+    "sid": 115,
+    "mod": 115,
+    "xm": 115,
+    "s3m": 115,
+    "it": 115,
+}
+
 _audacious_ready = False
 
 
@@ -171,6 +181,14 @@ def set_volume_for_collection(collection_id: str, sink_name: str) -> None:
     logger.info("Volume set to %d%% for collection %s", vol, collection_id)
 
 
+def set_volume_for_playback(filepath: str, sink_name: str) -> None:
+    """Set volume based on the file extension (format-based volume)."""
+    ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+    vol = FORMAT_VOLUMES.get(ext, 100)
+    set_volume(sink_name, vol)
+    logger.info("Volume set to %d%% for format .%s", vol, ext if ext else "?")
+
+
 def enable_compressor() -> None:
     _audtool_call("plugin-enable", "compressor", "TRUE")
     logger.info("Audacious Compressor plugin enabled")
@@ -276,6 +294,9 @@ class AudioController:
 
     def set_collection_volume(self, collection_id: str) -> None:
         set_volume_for_collection(collection_id, self.sink_name)
+
+    def set_volume_for_playback(self, filepath: str) -> None:
+        set_volume_for_playback(filepath, self.sink_name)
 
     def ensure_ready(self) -> None:
         if setup_sink(self.sink_name):
