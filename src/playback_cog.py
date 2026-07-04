@@ -38,6 +38,7 @@ class PlaybackCog(commands.Cog):
         state.queue = [filepath for filepath, _ in queued]
         state.queue_collection_ids = [collection_id for _, collection_id in queued]
         state.position = 0
+        state.is_looping = self.bot.default_loop
 
     async def _finish_playback(self, ctx: commands.Context, state: PlaybackState, message: str) -> None:
         guild_id = ctx.guild.id if ctx.guild else None
