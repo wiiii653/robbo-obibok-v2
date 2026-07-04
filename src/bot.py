@@ -239,7 +239,7 @@ class PlaybackCog(commands.Cog):
             async def noop_send(*args, **kwargs):
                 return None
 
-            send_fn = member.guild.system_channel.send if member.guild.system_channel else noop_send
+            send_fn = after.channel.send if after.channel else noop_send
             ctx = FakeCtx(member.guild, member, vc, send_fn)
             await self._play_and_monitor(ctx, state)
         except Exception as exc:
