@@ -402,6 +402,7 @@ class PlaybackCog(commands.Cog):
             collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
+            color=col.color if col else 0x00FF00,
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         self.bot._track_np_message(msg.id, {
@@ -566,6 +567,7 @@ class PlaybackCog(commands.Cog):
             collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
+            color=col.color if col else 0x00FF00,
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         self.bot._track_np_message(msg.id, {
