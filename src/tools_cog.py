@@ -110,5 +110,5 @@ class ToolsCog(commands.Cog):
             inline=False,
         )
 
-        embed.set_footer(text="Made with 🔥 by the forest spirit")
+        embed.set_footer(text="Made with 🔥 by the forest spirit — Boruta")
         await ctx.send(embed=embed)

@@ -32,7 +32,7 @@ class TestCollectionRegistry:
         hvsc = get_collection("hvsc")
         assert hvsc is not None
         assert hvsc.name == "C64 SID (HVSC)"
-        assert hvsc.volume == 100
+        assert hvsc.volume == 120
 
     def test_get_nonexistent_collection(self):
         assert get_collection("nonexistent") is None

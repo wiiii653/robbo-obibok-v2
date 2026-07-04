@@ -55,7 +55,12 @@ class FavoritesCog(commands.Cog):
             return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
         lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
         for i, t in enumerate(tracks, 1):
-            name = t.get("title", t["filepath"].rsplit("/", 1)[-1])
+            name = t.get("title", "")
+            if not name:
+                meta = self.bot.engine.get_track_metadata(t["filepath"], t.get("collection_id", ""))
+                name = meta.get("NAME", "")
+            if not name:
+                name = t["filepath"].rsplit("/", 1)[-1]
             author_s = f" — {t['author']}" if t.get("author") else ""
             lines.append(f"`{i}.` {name}{author_s}")
         for chunk_start in range(0, len(lines), 15):
