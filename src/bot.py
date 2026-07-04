@@ -219,7 +219,7 @@ class PlaybackCog(commands.Cog):
         vc = None
         try:
             vc = await after.channel.connect()
-            track = self.bot.engine.start_radio(state, user_id=member.id)
+            track = await self.bot.engine.start_radio(state, user_id=member.id)
             if not track:
                 self.bot.release_lease(member.guild.id)
                 await vc.disconnect()
@@ -339,7 +339,7 @@ class PlaybackCog(commands.Cog):
         try:
             self.bot._cancel_predownload(ctx.guild.id)
             await ctx.author.voice.channel.connect()
-            track = self.bot.engine.start_radio(state, user_id=ctx.author.id)
+            track = await self.bot.engine.start_radio(state, user_id=ctx.author.id)
             if not track:
                 self.bot.release_lease(ctx.guild.id)
                 if ctx.voice_client:
@@ -677,6 +677,7 @@ class CollectionCog(commands.Cog):
         state.position = 0
         state.current_track = ""
         state.current_collection_id = ""
+        state.is_looping = self.bot.default_loop
         state.search_results = []
         state.search_collection_id = ""
         col = get_collection(collection_id)
@@ -686,7 +687,7 @@ class CollectionCog(commands.Cog):
         try:
             await ctx.author.voice.channel.connect()
             state.voice_channel_id = ctx.author.voice.channel.id
-            track = self.bot.engine.start_radio(state, collection_id=collection_id, user_id=ctx.author.id)
+            track = await self.bot.engine.start_radio(state, collection_id=collection_id, user_id=ctx.author.id)
             if not track:
                 if ctx.voice_client:
                     await ctx.voice_client.disconnect()

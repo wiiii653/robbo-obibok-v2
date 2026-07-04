@@ -141,7 +141,8 @@ class TestPlaybackEngine:
         monkeypatch.setattr("random.shuffle", unexpected_shuffle)
         state = PlaybackState()
 
-        assert engine.start_radio(state) == "first.sap"
+        result = asyncio.run(engine.start_radio(state))
+        assert result == "first.sap"
         assert state.queue == ["first.sap", "second.sap"]
 
 
