@@ -8,6 +8,9 @@ favorites.json
 blacklist.json
 last_collection.txt
 archiwum/
+archiwum
+favorites.json.bak
+scripts/convert_caches.py
 var/
 *_cache_local.json
 *_cache_old_urls.json
