@@ -23,8 +23,8 @@ class TestCollectionVolumes:
         for col_id in COLLECTIONS:
             assert col_id in COLLECTION_VOLUMES
 
-    def test_hvsc_volume_is_120(self):
-        assert COLLECTION_VOLUMES["hvsc"] == 120
+    def test_hvsc_volume_is_100(self):
+        assert COLLECTION_VOLUMES["hvsc"] == 100
 
     def test_others_are_100(self):
         for col_id in ["asma", "modarchive", "ay", "ym", "tiny", "kgen"]:
@@ -290,7 +290,7 @@ class TestAudioConfig:
         from src.audio import set_volume_for_collection
         with patch("src.audio.set_volume") as mock_set:
             set_volume_for_collection("hvsc", "test_sink")
-            mock_set.assert_called_with("test_sink", 120)
+            mock_set.assert_called_with('test_sink', 100)
 
     @patch("src.audio._audtool_call")
     def test_enable_compressor(self, mock_tool):

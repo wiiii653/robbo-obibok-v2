@@ -73,6 +73,7 @@ def play_file(filepath: str, sink_name: str) -> bool:
         start_player(sink_name)
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
     _audtool_call("playlist-clear")
+    time.sleep(0.3)  # wait for Audacious to finish clearing the playlist
     add_ok = _audtool_call("playlist-addurl", filepath)
     play_ok = _audtool_call("playback-play")
     logger.info("play_file: add=%s play=%s", add_ok, play_ok)
