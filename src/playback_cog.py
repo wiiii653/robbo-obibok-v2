@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from typing import TYPE_CHECKING
 
 import discord
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
+        self._last_sent: tuple[str, int, float] = ("", 0, 0.0)  # (track, position, timestamp)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -468,6 +470,13 @@ class PlaybackCog(commands.Cog):
         self.bot._monitor_tasks[guild_id] = asyncio.create_task(run_monitor())
 
     async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState) -> None:
+        # Dedup: skip if same track+position was sent in the last 5 seconds
+        key = (state.current_track, state.position)
+        now = time.time()
+        if key == (self._last_sent[0], self._last_sent[1]) and now - self._last_sent[2] < 5:
+            return
+        self._last_sent = (state.current_track, state.position, now)
+
         collection_id = state.current_collection_id or state.collection_mode
         col = get_collection(collection_id)
         meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
