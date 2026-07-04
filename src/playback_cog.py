@@ -24,6 +24,7 @@ class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
         self._last_sent: tuple[str, int, float] = ("", 0, 0.0)  # (track, position, timestamp)
+        self._last_auto_start: float = 0.0  # timestamp of last auto-start attempt
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -45,6 +46,7 @@ class PlaybackCog(commands.Cog):
                 return
             if not self.bot.try_acquire_lease(guild):
                 return
+            self._last_auto_start = time.time()
             try:
                 vc = await channel.connect()
                 state.voice_channel_id = channel.id
@@ -116,11 +118,16 @@ class PlaybackCog(commands.Cog):
             return
         if after.channel.name != self.bot.auto_start_channel:
             return
+        # Dedup: don't re-attempt auto-start within 10s
+        now = time.time()
+        if now - self._last_auto_start < 10:
+            return
         state = self.bot.get_state(member.guild.id)
         if state.is_playing:
             return
         if not self.bot.try_acquire_lease(member.guild):
             return
+        self._last_auto_start = time.time()
         vc = None
         try:
             vc = await after.channel.connect()

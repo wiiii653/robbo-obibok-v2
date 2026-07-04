@@ -109,26 +109,36 @@ class PlaybackEngine:
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
-        track = current_track(state)
-        if not track:
-            return None
-        playback_path = await self._resolve_track_path(state, track)
-        if playback_path is None:
-            return None
-        playback_path = self._prepare_subsong_playback(state, playback_path)
-        self.audio.set_volume_for_playback(str(playback_path))
-        success = await asyncio.to_thread(self.audio.play, str(playback_path))
-        if success:
-            state.current_track = track
-            state.current_collection_id = self._collection_for_position(state)
-            state.is_playing = True
-            state.played_count += 1
-            state.history.append(track)
-            if len(state.history) > 20:
-                state.history = state.history[-20:]
-            save_queue(state, self.root_dir)
-            self._clear_remote_state(state)
-        return track if success else None
+        for _attempt in range(5):  # skip up to 5 bad tracks
+            track = current_track(state)
+            if not track:
+                return None
+            playback_path = await self._resolve_track_path(state, track)
+            if playback_path is None:
+                logger.warning("play_track: track not resolved, skipping: %s", track)
+                if next_track(state) is None:
+                    return None
+                continue
+            playback_path = self._prepare_subsong_playback(state, playback_path)
+            self.audio.set_volume_for_playback(str(playback_path))
+            success = await asyncio.to_thread(self.audio.play, str(playback_path))
+            if success:
+                state.current_track = track
+                state.current_collection_id = self._collection_for_position(state)
+                state.is_playing = True
+                state.played_count += 1
+                state.history.append(track)
+                if len(state.history) > 20:
+                    state.history = state.history[-20:]
+                save_queue(state, self.root_dir)
+                self._clear_remote_state(state)
+                return track
+            # Play failed — skip to next track instead of stopping the radio
+            logger.warning("play_track: failed to play %s, skipping to next", track)
+            if next_track(state) is None:
+                return None
+        logger.error("play_track: exhausted 5 skips, giving up")
+        return None
 
     async def skip_track(self, state: PlaybackState) -> str | None:
         if state.subsong_total > 1 and state.subsong_path:
