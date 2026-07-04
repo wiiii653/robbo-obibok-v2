@@ -66,21 +66,17 @@ class ObibokBot(commands.Bot):
         self._np_messages[msg_id] = data
 
     def _start_stream(self, guild_id: int, voice_client: discord.VoiceClient) -> None:
-        """Start or restart the PulseAudio monitor stream on the given voice client."""
+        """Start or restart the MonitorAudioSource on the given voice client."""
         old = self._active_streams.pop(guild_id, None)
         if old:
             if hasattr(old, "cleanup"):
                 old.cleanup()
-            elif voice_client.is_playing():
-                voice_client.stop()
-        logger.info("Stream started for guild %d", guild_id)
-        source = discord.FFmpegPCMAudio(f"{self.sink_name}.monitor", before_options="-f pulse")
+        source = MonitorAudioSource(sink_name=self.sink_name)
         source.source_id = id(source)
         voice_client.play(
             source,
             after=lambda e: self._on_stream_end(guild_id, e, source.source_id),
         )
-        logger.info("voice_client.play() called")
         self._active_streams[guild_id] = source
 
     def _stop_stream(self, guild_id: int) -> None:

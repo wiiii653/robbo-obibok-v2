@@ -74,10 +74,10 @@ def play_file(filepath: str, sink_name: str) -> bool:
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
     _audtool_call("playlist-clear")
     add_ok = _audtool_call("playlist-addurl", filepath)
-    logger.info("play_file: add=%s", add_ok)
+    play_ok = _audtool_call("playback-play")
+    logger.info("play_file: add=%s play=%s", add_ok, play_ok)
     for attempt in range(3):
-        _audtool_call("playback-play")
-        time.sleep(0.5)
+        time.sleep(1)
         if _audtool_call("playback-playing"):
             _move_to_sink(sink_name)
             logger.info("play_file: playing after attempt %d", attempt + 1)
