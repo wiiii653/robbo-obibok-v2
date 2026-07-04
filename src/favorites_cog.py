@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -11,10 +12,13 @@ from .cog_shared import FAVORITE_EMOJI
 from .collection_loader import resolve_collection_for_filepath
 from .favorites import PlaylistLibrary
 
+if TYPE_CHECKING:
+    from .bot import ObibokBot
+
 
 class FavoritesCog(commands.Cog):
-    def __init__(self, bot) -> None:
-        self.bot = bot
+    def __init__(self, bot: ObibokBot) -> None:
+        self.bot: ObibokBot = bot
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:

@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import random
+from typing import TYPE_CHECKING
 
 import discord
 from discord.ext import commands
 
-from .cog_shared import FAVORITE_EMOJI, logger
+from .cog_shared import FAVORITE_EMOJI, FakeContext, logger
 from .collection_loader import get_collection, load_raw_paths
 from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
 from .remote import is_remote_track
 
+if TYPE_CHECKING:
+    from .bot import ObibokBot
+
 
 class PlaybackCog(commands.Cog):
-    def __init__(self, bot) -> None:
-        self.bot = bot
+    def __init__(self, bot: ObibokBot) -> None:
+        self.bot: ObibokBot = bot
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -48,14 +52,8 @@ class PlaybackCog(commands.Cog):
                     await vc.disconnect()
                     return
                 # Build a minimal fake ctx for _play_and_monitor
-                class _ReconnectCtx:
-                    def __init__(self):
-                        self.guild = guild
-                        self.author = members[0]
-                        self.voice_client = vc
-                    async def send(self, *args, **kwargs):
-                        return None
-                await self._play_and_monitor(_ReconnectCtx(), state)
+                ctx = FakeContext(guild, members[0], vc)
+                await self._play_and_monitor(ctx, state)
                 logger.info("Auto-reconnect: resumed playback for %d users in %s", len(members), channel.name)
             except Exception as exc:
                 logger.warning("Auto-reconnect failed: %s", exc)
@@ -131,21 +129,11 @@ class PlaybackCog(commands.Cog):
                 return
             state.voice_channel_id = after.channel.id
 
-            class FakeCtx:
-                def __init__(self, guild, author, voice_client, send_fn):
-                    self.guild = guild
-                    self.author = author
-                    self.voice_client = voice_client
-                    self._send = send_fn
-
-                async def send(self, *args, **kwargs):
-                    return await self._send(*args, **kwargs)
-
             async def noop_send(*args, **kwargs):
                 return None
 
             send_fn = after.channel.send if after.channel else noop_send
-            ctx = FakeCtx(member.guild, member, vc, send_fn)
+            ctx = FakeContext(member.guild, member, vc, send_fn)
             await self._play_and_monitor(ctx, state)
         except Exception as exc:
             await self.bot.engine.stop(state)
