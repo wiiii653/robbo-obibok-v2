@@ -126,7 +126,7 @@ class TrackMonitor:
         playing = self.audio.is_playing()
 
         if not playing:
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             if self._not_playing_since is None:
                 self._not_playing_since = now
             else:

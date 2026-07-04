@@ -190,10 +190,16 @@ class FavoritesCog(commands.Cog):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        queued = [
-            (track["filepath"], resolve_collection_for_filepath(track["filepath"]) or track.get("collection_id") or state.collection_mode)
-            for track in playlist.get("tracks", [])
-        ]
+        queued = []
+        for track in playlist.get("tracks", []):
+            filepath = track["filepath"]
+            saved_cid = track.get("collection_id")
+            ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+            if ext in ("sid", "sap", "ay", "ym"):
+                cid = resolve_collection_for_filepath(filepath) or saved_cid or state.collection_mode
+            else:
+                cid = saved_cid or resolve_collection_for_filepath(filepath) or state.collection_mode
+            queued.append((filepath, cid))
         playback_cog = self.bot.get_cog("PlaybackCog")
         if playback_cog:
             playback_cog._set_queue(state, queued, shuffle=True)

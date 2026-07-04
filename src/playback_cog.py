@@ -19,6 +19,50 @@ class PlaybackCog(commands.Cog):
     def __init__(self, bot) -> None:
         self.bot = bot
 
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        """Auto-reconnect on restart: if humans are in auto_start_channel, start playing."""
+        if not self.bot.auto_start_channel:
+            return
+        await asyncio.sleep(3)  # let everything settle
+        for guild in self.bot.guilds:
+            if self.bot.guild_id is not None and guild.id != self.bot.guild_id:
+                continue
+            channel = discord.utils.get(guild.voice_channels, name=self.bot.auto_start_channel)
+            if not channel:
+                continue
+            members = [m for m in channel.members if not m.bot]
+            if not members:
+                continue
+            state = self.bot.get_state(guild.id)
+            if state.is_playing:
+                return
+            if not self.bot.try_acquire_lease(guild):
+                return
+            try:
+                vc = await channel.connect()
+                state.voice_channel_id = channel.id
+                track = await self.bot.engine.start_radio(state, user_id=members[0].id)
+                if not track:
+                    self.bot.release_lease(guild.id)
+                    await vc.disconnect()
+                    return
+                # Build a minimal fake ctx for _play_and_monitor
+                class _ReconnectCtx:
+                    def __init__(self):
+                        self.guild = guild
+                        self.author = members[0]
+                        self.voice_client = vc
+                    async def send(self, *args, **kwargs):
+                        return None
+                await self._play_and_monitor(_ReconnectCtx(), state)
+                logger.info("Auto-reconnect: resumed playback for %d users in %s", len(members), channel.name)
+            except Exception as exc:
+                logger.warning("Auto-reconnect failed: %s", exc)
+                self.bot.release_lease(guild.id)
+                if vc:
+                    await vc.disconnect()
+
     async def _can_control_audio(self, ctx: commands.Context, *, require_owner: bool = False) -> bool:
         if not ctx.guild:
             return False
