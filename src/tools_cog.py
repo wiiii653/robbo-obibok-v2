@@ -40,10 +40,17 @@ class ToolsCog(commands.Cog):
 
     @commands.command()
     async def help(self, ctx: commands.Context, command: str = "") -> None:
-        embed = discord.Embed(title="Robbo Obibok v2 — Commands", color=0x2ECC71)
+        embed = discord.Embed(
+            title="🤖 Robbo Obibok v2 — Help",
+            description=(
+                "Seven collections, one bot — **the biggest chiptune radio on Discord.**\n"
+                "Join a voice channel and `!play`!"
+            ),
+            color=0x2ECC71,
+        )
 
         embed.add_field(
-            name="Playback",
+            name="🎮 Playback",
             value=(
                 "`!play` / `!pl` — Start shuffled radio\n"
                 "`!play <query>` — Search and play\n"
@@ -63,24 +70,24 @@ class ToolsCog(commands.Cog):
         )
 
         embed.add_field(
-            name="Collections",
+            name="🎵 Collections",
             value=(
                 "`!flip` / `!switch` / `!toggle` / `!fl` — Cycle collection\n"
                 "`!status` / `!mode` / `!collection` — Show current collection\n"
                 "`!search <query>` — Search tracks\n"
-                "`!hvsc` / `!c64` / `!sid`\n"
-                "`!asma`\n"
-                "`!mod` / `!modarchive` / `!modules`\n"
-                "`!ay` / `!spectrum` / `!zx`\n"
-                "`!ym` / `!atarist`\n"
-                "`!tiny` / `!tm`\n"
-                "`!kgen` / `!keygen` / `!k`"
+                "`!hvsc` / `!c64` — 🟣 C64 SID (~60 500)\n"
+                "`!asma` — 🟢 Atari SAP (~6 300)\n"
+                "`!mod` / `!modarchive` — 🟠 ModArchive (~175 000)\n"
+                "`!ay` / `!zx` — 🔵 ZX Spectrum AY (~4 500)\n"
+                "`!ym` / `!atarist` — 🎹 Atari ST YM (~7 200)\n"
+                "`!tiny` / `!tm` — 🎵 Demoscene Modules (~550)\n"
+                "`!kgen` / `!keygen` / `!k` — 🔊 Keygen Music (~4 800)"
             ),
             inline=False,
         )
 
         embed.add_field(
-            name="Favorites & Blacklist",
+            name="❤️ Favorites & Blacklist",
             value=(
                 "`!favorites` / `!favs` — Show your favorites\n"
                 "`!favplay` / `!fp` — Play favorites\n"
@@ -95,9 +102,13 @@ class ToolsCog(commands.Cog):
         )
 
         embed.add_field(
-            name="Tools",
-            value="`!stats` — Show bot stats\n`!ocko` — Display ASCII owl",
+            name="🔧 Tools",
+            value=(
+                "`!stats` — Show bot stats\n"
+                "`!ocko` — 🦉 ASCII owl"
+            ),
             inline=False,
         )
 
+        embed.set_footer(text="Made with 🔥 by the forest spirit")
         await ctx.send(embed=embed)
