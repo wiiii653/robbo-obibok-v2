@@ -56,7 +56,7 @@ class PlaybackCog(commands.Cog):
                     await vc.disconnect()
                     return
                 # Build a minimal fake ctx for _play_and_monitor
-                ctx = FakeContext(guild, members[0], vc)
+                ctx = FakeContext(guild, members[0], vc, send=channel.send)
                 await self._play_and_monitor(ctx, state)
                 logger.info("Auto-reconnect: resumed playback for %d users in %s", len(members), channel.name)
             except Exception as exc:
