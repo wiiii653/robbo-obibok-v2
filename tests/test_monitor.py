@@ -7,30 +7,30 @@ import asyncio
 import pytest
 
 from src.monitor import (
-    GME_TIMEOUT,
+    CONSOLE_TIMEOUT,
     TrackMonitor,
     compute_timeout,
-    is_gme_format,
+    is_console_format,
     should_advance_after_stop,
     should_confirm_output_drop,
 )
 
 
-class TestIsGmeFormat:
-    def test_sap_is_gme(self):
-        assert is_gme_format("test.sap") is True
+class TestIsConsoleFormat:
+    def test_sap_is_console(self):
+        assert is_console_format("test.sap") is True
 
-    def test_nsf_is_gme(self):
-        assert is_gme_format("test.nsf") is True
+    def test_nsf_is_console(self):
+        assert is_console_format("test.nsf") is True
 
-    def test_mod_is_not_gme(self):
-        assert is_gme_format("test.mod") is False
+    def test_mod_is_not_console(self):
+        assert is_console_format("test.mod") is False
 
-    def test_sid_is_gme(self):
-        assert is_gme_format("test.sid") is True
+    def test_sid_is_console(self):
+        assert is_console_format("test.sid") is True
 
     def test_no_extension(self):
-        assert is_gme_format("noext") is False
+        assert is_console_format("noext") is False
 
 
 class TestComputeTimeout:
@@ -38,28 +38,28 @@ class TestComputeTimeout:
         assert compute_timeout(120) == 135
 
     def test_unknown_length(self):
-        assert compute_timeout(0) == GME_TIMEOUT
+        assert compute_timeout(0) == CONSOLE_TIMEOUT
 
     def test_negative_length(self):
-        assert compute_timeout(-1) == GME_TIMEOUT
+        assert compute_timeout(-1) == CONSOLE_TIMEOUT
 
-    def test_gme_length_uses_fixed_timeout(self):
-        assert compute_timeout(999, is_gme_format=True) == GME_TIMEOUT
+    def test_console_length_uses_fixed_timeout(self):
+        assert compute_timeout(999, is_console_format=True) == CONSOLE_TIMEOUT
 
 
 class TestMonitorHelpers:
     def test_confirm_output_drop_waits_for_grace_period(self):
         now = 100.0
-        drop, since = should_confirm_output_drop(20, 2, None, now, 3, is_gme_format=False)
+        drop, since = should_confirm_output_drop(20, 2, None, now, 3, is_console_format=False)
         assert drop is False
         assert since == now
 
-        drop, since = should_confirm_output_drop(20, 2, since, now + 4, 3, is_gme_format=False)
+        drop, since = should_confirm_output_drop(20, 2, since, now + 4, 3, is_console_format=False)
         assert drop is True
         assert since is None
 
-    def test_confirm_output_drop_ignored_for_gme_formats(self):
-        drop, since = should_confirm_output_drop(20, 2, None, 100.0, 3, is_gme_format=True)
+    def test_confirm_output_drop_ignored_for_console_formats(self):
+        drop, since = should_confirm_output_drop(20, 2, None, 100.0, 3, is_console_format=True)
         assert drop is False
         assert since is None
 

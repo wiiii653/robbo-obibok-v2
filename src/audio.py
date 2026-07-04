@@ -81,18 +81,19 @@ def play_file(filepath: str, sink_name: str) -> bool:
         start_player(sink_name)
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
     _audtool_call("playlist-clear")
+    time.sleep(0.3)  # wait for Audacious to finish clearing the playlist
     add_ok = _audtool_call("playlist-addurl", filepath)
     play_ok = _audtool_call("playback-play")
     logger.info("play_file: add=%s play=%s", add_ok, play_ok)
-    for attempt in range(10):
+    for attempt in range(3):
         time.sleep(1)
         if _audtool_call("playback-playing"):
             _move_to_sink(sink_name)
-            logger.info("play_file: playing after %ds", attempt + 1)
+            logger.info("play_file: playing after attempt %d", attempt + 1)
             return True
         logger.warning("play_file: attempt %d failed, retrying", attempt + 1)
     _audtool_call("playlist-clear")
-    logger.error("play_file: FAILED after 10 attempts, filepath=%s", filepath)
+    logger.warning("play_file: FAILED after 3 attempts, filepath=%s — will retry later", filepath)
     return False
 
 
@@ -195,6 +196,7 @@ def _move_to_sink(sink_name: str) -> None:
                 ["pactl", "move-sink-input", index.strip(), sink_name],
                 capture_output=True,
             )
+            logger.info("Moved audacious to sink %s", sink_name)
 
 
 def _audtool_call(*args: str) -> bool:
