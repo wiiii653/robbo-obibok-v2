@@ -146,10 +146,15 @@ class ObibokBot(commands.Bot):
     async def _health_watchdog(self) -> None:
         while not self.is_closed():
             await asyncio.sleep(30)
+            elapsed = 0.0
             try:
+                t0 = asyncio.get_event_loop().time()
                 await asyncio.to_thread(self.engine.audio.ensure_ready)
+                elapsed = asyncio.get_event_loop().time() - t0
+                if elapsed > 0.5:
+                    logger.warning("Health watchdog: ensure_ready took %.2fs (long tick)", elapsed)
             except Exception as exc:
-                logger.warning("Health watchdog failed: %s", exc)
+                logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
 
 
 from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog

@@ -177,6 +177,7 @@ def setup_sid_config() -> None:
 def ensure_audacious(sink_name: str = "robbo_bot") -> None:
     if _audacious_ready and _is_audacious_alive():
         return
+    logger.warning("Health watchdog: Audacious not responsive, restarting...")
     kill_player()
     start_player(sink_name)
 
@@ -184,8 +185,12 @@ def ensure_audacious(sink_name: str = "robbo_bot") -> None:
 def _is_audacious_alive() -> bool:
     result = subprocess.run(["pgrep", "-x", "audacious"], capture_output=True)
     if result.returncode != 0:
+        logger.warning("Health watchdog: pgrep audacious returned %d", result.returncode)
         return False
-    return bool(_audtool_call("version"))
+    alive = bool(_audtool_call("version"))
+    if not alive:
+        logger.warning("Health watchdog: audtool version failed (process exists but D-Bus unresponsive)")
+    return alive
 
 
 def _move_to_sink(sink_name: str) -> None:
