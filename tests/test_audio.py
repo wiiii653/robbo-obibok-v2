@@ -185,6 +185,16 @@ class TestSinkManagement:
         assert mock_run.call_count == 2
 
     @patch("src.audio.subprocess.run")
+    def test_setup_sink_reports_creation_failure(self, mock_run):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="some_other_sink"),
+            MagicMock(returncode=1),
+        ]
+        from src.audio import setup_sink
+
+        assert setup_sink("robbo_test_sink") is False
+
+    @patch("src.audio.subprocess.run")
     def test_move_to_sink_only_moves_audacious(self, mock_run):
         listing = """
 Sink Input #41

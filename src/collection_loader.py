@@ -77,12 +77,41 @@ def parse_mod_header(filepath: str) -> dict[str, str]:
     return {"NAME": title}
 
 
+def parse_xm_header(filepath: str) -> dict[str, str]:
+    return _parse_title(filepath, offset=17, length=20)
+
+
+def parse_s3m_header(filepath: str) -> dict[str, str]:
+    return _parse_title(filepath, offset=0, length=28)
+
+
+def parse_it_header(filepath: str) -> dict[str, str]:
+    return _parse_title(filepath, offset=4, length=26)
+
+
+def _parse_title(filepath: str, *, offset: int, length: int) -> dict[str, str]:
+    try:
+        with open(filepath, "rb") as f:
+            f.seek(offset)
+            data = f.read(length)
+    except OSError:
+        return {}
+    title = data.decode("ascii", errors="replace").rstrip("\x00 ")
+    return {"NAME": title}
+
+
 def extract_metadata(filepath: str, collection_id: str) -> dict[str, str]:
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
     if ext == "sap":
         return parse_sap_header(filepath)
     if ext == "sid":
         return parse_sid_header(filepath)
-    if ext in ("mod", "xm", "s3m", "it"):
+    if ext == "mod":
         return parse_mod_header(filepath)
+    if ext == "xm":
+        return parse_xm_header(filepath)
+    if ext == "s3m":
+        return parse_s3m_header(filepath)
+    if ext == "it":
+        return parse_it_header(filepath)
     return {}

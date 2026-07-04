@@ -93,3 +93,18 @@ class TestMetadataExtraction:
     def test_extract_metadata_unknown_format(self):
         meta = extract_metadata("/some/file.txt", "asma")
         assert meta == {}
+
+    def test_extract_metadata_tracker_titles(self, tmp_path):
+        fixtures = {
+            "track.mod": b"MOD title".ljust(20, b"\0"),
+            "track.xm": b"Extended Module: " + b"XM title".ljust(20, b"\0"),
+            "track.s3m": b"S3M title".ljust(28, b"\0"),
+            "track.it": b"IMPM" + b"IT title".ljust(26, b"\0"),
+        }
+        for filename, content in fixtures.items():
+            (tmp_path / filename).write_bytes(content)
+
+        assert extract_metadata(str(tmp_path / "track.mod"), "tiny")["NAME"] == "MOD title"
+        assert extract_metadata(str(tmp_path / "track.xm"), "tiny")["NAME"] == "XM title"
+        assert extract_metadata(str(tmp_path / "track.s3m"), "tiny")["NAME"] == "S3M title"
+        assert extract_metadata(str(tmp_path / "track.it"), "tiny")["NAME"] == "IT title"

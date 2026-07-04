@@ -251,6 +251,26 @@ class TestMonitorTickBranches:
         assert len(ended) == 0
 
     @pytest.mark.asyncio
+    async def test_empty_channel_checked_when_audio_telemetry_fails(self):
+        audio = type("MockAudio", (), {
+            "is_playing": lambda self=None: True,
+            "output_length": lambda self=None: -1,
+            "song_length": lambda self=None: 0,
+        })()
+        monitor = TrackMonitor(audio=audio, empty_timeout=0)
+        state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
+        emptied = []
+
+        async def on_end(s):
+            pass
+
+        async def on_empty():
+            emptied.append(True)
+
+        await monitor._tick(state, on_end, on_empty, lambda: 0)
+        assert emptied == [True]
+
+    @pytest.mark.asyncio
     async def test_tick_track_change_resets_output(self):
         """When current track changes, _last_output resets to avoid false track end."""
         audio = type("MockAudio", (), {

@@ -21,6 +21,7 @@ from .remote import is_remote_track
 from .stream import MonitorAudioSource
 
 logger = logging.getLogger(__name__)
+FAVORITE_EMOJI = "⭐"
 
 
 class ObibokBot(commands.Bot):
@@ -56,8 +57,8 @@ class ObibokBot(commands.Bot):
         self._predownload_tasks: dict[int, asyncio.Task] = {}
         self._active_streams: dict[int, MonitorAudioSource] = {}
         self._background_tasks: list[asyncio.Task] = []
+        self._playback_sessions: dict[int, int] = {}
         self._np_messages_max = 200
-        self._reaction_users: dict[tuple[int, int], set[str]] = {}
 
     def _track_np_message(self, msg_id: int, data: dict[str, Any]) -> None:
         if len(self._np_messages) >= self._np_messages_max:
@@ -405,10 +406,13 @@ class PlaybackCog(commands.Cog):
             total=len(state.queue),
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
+        if msg is None:
+            return
         self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
             "collection_id": collection_id,
         })
+        await msg.add_reaction(FAVORITE_EMOJI)
 
     @commands.command(aliases=["q"])
     async def queue(self, ctx: commands.Context, page: int = 0) -> None:
@@ -436,11 +440,13 @@ class PlaybackCog(commands.Cog):
         if not await self._can_control_audio(ctx, require_owner=True):
             return
         state = self.bot.get_state(ctx.guild.id)
+        if index < 1 or index > len(state.queue):
+            return await ctx.send("Invalid position.")
         self.bot._cancel_monitor(ctx.guild.id)
         self.bot._cancel_predownload(ctx.guild.id)
         track = await self.bot.engine.jump_to_track(state, index - 1)
         if not track:
-            return await ctx.send("Invalid position.")
+            return await self._finish_playback(ctx, state, "Failed to play track.")
         await self._after_track_started(ctx, state)
         self._install_monitor(ctx, state)
 
@@ -458,7 +464,7 @@ class PlaybackCog(commands.Cog):
             return
         if level < 0:
             vol = self.bot.engine.audio.get_volume()
-            return await ctx.send(f"Volume: {vol}%" if vol else "Volume: unknown")
+            return await ctx.send(f"Volume: {vol}%" if vol is not None else "Volume: unknown")
         self.bot.engine.audio.set_volume(level)
         await ctx.send(f"Volume set to {level}%")
 
@@ -480,8 +486,17 @@ class PlaybackCog(commands.Cog):
 
     @commands.command()
     async def sleep(self, ctx: commands.Context, minutes: int = 5) -> None:
+        if not ctx.guild:
+            return
+        if minutes <= 0:
+            return await ctx.send("Sleep time must be greater than zero minutes.")
+        if not await self._can_control_audio(ctx, require_owner=True):
+            return
+        session = self.bot._playback_sessions.get(ctx.guild.id, 0)
         await ctx.send(f"Stopping in {minutes} minutes...")
         await asyncio.sleep(minutes * 60)
+        if self.bot._playback_sessions.get(ctx.guild.id, 0) != session:
+            return
         await self.stop(ctx)
 
     @commands.command()
@@ -502,6 +517,8 @@ class PlaybackCog(commands.Cog):
             return
         if not ctx.voice_client:
             return await self._finish_playback(ctx, state, "Voice connection unavailable.")
+
+        self.bot._playback_sessions[ctx.guild.id] = self.bot._playback_sessions.get(ctx.guild.id, 0) + 1
 
         self.bot._cancel_monitor(ctx.guild.id)
         self.bot._cancel_predownload(ctx.guild.id)
@@ -571,10 +588,13 @@ class PlaybackCog(commands.Cog):
             total=len(state.queue),
         )
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
+        if msg is None:
+            return
         self.bot._track_np_message(msg.id, {
             "filepath": state.current_track,
             "collection_id": collection_id,
         })
+        await msg.add_reaction(FAVORITE_EMOJI)
 
 
 class CollectionCog(commands.Cog):
@@ -710,44 +730,38 @@ class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot = bot
 
-    def _reaction_key(self, msg_id: int, user_id: int) -> tuple[int, int]:
-        return (msg_id, user_id)
-
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
-        if payload.user_id == self.bot.user.id:
+        if str(payload.emoji) != FAVORITE_EMOJI:
+            return
+        if self.bot.user and payload.user_id == self.bot.user.id:
             return
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        key = self._reaction_key(payload.message_id, payload.user_id)
-        emojis = self.bot._reaction_users.setdefault(key, set())
-        was_empty = len(emojis) == 0
-        emojis.add(str(payload.emoji))
-        if was_empty:
-            self.bot.engine.toggle_favorite(
-                payload.user_id,
-                msg_data["filepath"],
-                msg_data["collection_id"],
-            )
+        meta = self.bot.engine.get_track_metadata(msg_data["filepath"], msg_data["collection_id"])
+        title = meta.get("NAME", msg_data["filepath"].rsplit("/", 1)[-1].rsplit(".", 1)[0])
+        self.bot.engine.favorites.add(
+            payload.user_id,
+            msg_data["filepath"],
+            title,
+            msg_data["collection_id"],
+        )
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
-        if payload.user_id == self.bot.user.id:
+        if str(payload.emoji) != FAVORITE_EMOJI:
+            return
+        if self.bot.user and payload.user_id == self.bot.user.id:
             return
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        key = self._reaction_key(payload.message_id, payload.user_id)
-        emojis = self.bot._reaction_users.get(key, set())
-        emojis.discard(str(payload.emoji))
-        if not emojis:
-            self.bot._reaction_users.pop(key, None)
-            self.bot.engine.toggle_favorite(
-                payload.user_id,
-                msg_data["filepath"],
-                msg_data["collection_id"],
-            )
+        self.bot.engine.favorites.remove(
+            payload.user_id,
+            msg_data["filepath"],
+            msg_data["collection_id"],
+        )
 
     @commands.command(aliases=["favs"])
     async def favorites(self, ctx: commands.Context) -> None:

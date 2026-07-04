@@ -71,9 +71,30 @@ class Favorites:
         save_json(self._filepath, self._data)
 
     def toggle(self, user_id: int, filepath: str, title: str = "", collection_id: str = "") -> bool:
+        if self.has_track(user_id, filepath, collection_id):
+            self.remove(user_id, filepath, collection_id)
+            return False
+        self.add(user_id, filepath, title, collection_id)
+        return True
+
+    def add(self, user_id: int, filepath: str, title: str = "", collection_id: str = "") -> bool:
         self._ensure_loaded()
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
+        if self.has_track(user_id, filepath, collection_id):
+            return False
+        tracks.append({
+            "filepath": filepath,
+            "title": title,
+            "collection_id": collection_id,
+            "added_at": time.time(),
+        })
+        self._save()
+        return True
+
+    def remove(self, user_id: int, filepath: str, collection_id: str = "") -> bool:
+        self._ensure_loaded()
+        tracks = self._data.get(str(user_id), [])
         existing = next(
             (
                 track
@@ -83,16 +104,9 @@ class Favorites:
             ),
             None,
         )
-        if existing:
-            tracks.remove(existing)
-            self._save()
+        if existing is None:
             return False
-        tracks.append({
-            "filepath": filepath,
-            "title": title,
-            "collection_id": collection_id,
-            "added_at": time.time(),
-        })
+        tracks.remove(existing)
         self._save()
         return True
 

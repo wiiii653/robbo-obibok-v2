@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.persistence import ensure_dir, load_json, load_tracks_from_cache, save_json
+from src.persistence import load_json, load_tracks_from_cache, save_json
 
 
 class TestLoadJson:
@@ -60,11 +60,3 @@ class TestLoadTracksFromCache:
 
     def test_load_nonexistent(self, tmp_path):
         assert load_tracks_from_cache(tmp_path / "nope.json") is None
-
-
-class TestEnsureDir:
-    def test_creates_directory(self, tmp_path):
-        new_dir = tmp_path / "new" / "nested" / "dir"
-        result = ensure_dir(new_dir)
-        assert result.exists()
-        assert result.is_dir()

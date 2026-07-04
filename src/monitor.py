@@ -105,6 +105,24 @@ class TrackMonitor:
         if not state.is_playing:
             return
 
+        if get_voice_members and on_empty:
+            members = await asyncio.to_thread(get_voice_members)
+            if members == 0:
+                now = asyncio.get_running_loop().time()
+                if self.empty_timeout <= 0:
+                    logger.info("Empty channel, disconnecting immediately")
+                    self._empty_since = None
+                    await on_empty()
+                    return
+                if self._empty_since is None:
+                    self._empty_since = now
+                elif now - self._empty_since >= self.empty_timeout:
+                    logger.info("Empty channel for %ds, disconnecting", self.empty_timeout)
+                    self._empty_since = None
+                    await on_empty()
+                return
+            self._empty_since = None
+
         playing = await asyncio.to_thread(self.audio.is_playing)
 
         if not playing:
@@ -166,22 +184,3 @@ class TrackMonitor:
             state.is_playing = False
             await on_track_end(state)
             return
-
-        if get_voice_members and on_empty:
-            members = await asyncio.to_thread(get_voice_members)
-            if members == 0:
-                now = asyncio.get_running_loop().time()
-                if self.empty_timeout <= 0:
-                    logger.info("Empty channel, disconnecting immediately")
-                    self._empty_since = None
-                    await on_empty()
-                    return
-                if self._empty_since is None:
-                    self._empty_since = now
-                elif now - self._empty_since >= self.empty_timeout:
-                    logger.info("Empty channel for %ds, disconnecting", self.empty_timeout)
-                    self._empty_since = None
-                    await on_empty()
-                    return
-                return
-            self._empty_since = None
