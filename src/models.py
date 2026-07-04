@@ -16,6 +16,7 @@ class Collection:
     flip_tag: str = ""
     icon: str = ""
     footer: str = ""
+    color: int = 0x00FF00
 
 
 FLIP_ORDER: list[str] = ["hvsc", "asma", "modarchive", "ay", "ym", "tiny", "kgen"]
@@ -31,6 +32,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🟣HVSC",
         icon="🟣",
         footer="C64 SID Radio",
+        color=0x9B59B6,
     ),
     "asma": Collection(
         id="asma",
@@ -42,6 +44,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🟢ASMA",
         icon="🟢",
         footer="ASMA Radio",
+        color=0x2ECC71,
     ),
     "modarchive": Collection(
         id="modarchive",
@@ -53,6 +56,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🟠Mod",
         icon="🟠",
         footer="ModArchive Radio",
+        color=0xE67E22,
     ),
     "ay": Collection(
         id="ay",
@@ -64,6 +68,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🔵AY",
         icon="🔵",
         footer="ZX Spectrum Radio",
+        color=0x3498DB,
     ),
     "ym": Collection(
         id="ym",
@@ -75,6 +80,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🎹YM",
         icon="🎹",
         footer="Atari ST YM Radio",
+        color=0xF1C40F,
     ),
     "tiny": Collection(
         id="tiny",
@@ -86,6 +92,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🎵Tiny",
         icon="🎵",
         footer="Tiny Music Radio",
+        color=0x1ABC9C,
     ),
     "kgen": Collection(
         id="kgen",
@@ -97,6 +104,7 @@ COLLECTIONS: dict[str, Collection] = {
         flip_tag="🔊KGen",
         icon="🔊",
         footer="Keygen Music Radio",
+        color=0xE74C3C,
     ),
 }
 

@@ -60,6 +60,10 @@ class PlaybackEngine:
 
     def _prepare_subsong_playback(self, state: PlaybackState, track_path: Path) -> Path:
         track_key = str(track_path)
+        ext = track_key.rsplit(".", 1)[-1].lower() if "." in track_key else ""
+        # AY/YM are now handled natively by Audacious console.so — skip ffmpeg conversion
+        if ext in ("ay", "ym"):
+            return track_path
         if state.subsong_path != track_key:
             self._clear_subsong_state(state)
             state.subsong_path = track_key
@@ -137,7 +141,7 @@ class PlaybackEngine:
         track = next_track(state)
         if not track:
             return None
-        return track
+        return await self.play_track(state)
 
     async def stop(self, state: PlaybackState) -> None:
         await asyncio.to_thread(self.audio.stop)
@@ -199,11 +203,11 @@ class PlaybackEngine:
     async def predownload_next(self, state: PlaybackState) -> str | None:
         if not state.queue:
             return None
-        if state.is_looping:
-            next_index = state.position
-        else:
-            next_index = state.position + 1
-            if next_index >= len(state.queue):
+        next_index = state.position + 1
+        if next_index >= len(state.queue):
+            if state.is_looping:
+                next_index = 0
+            else:
                 return None
         next_track = state.queue[next_index]
         if not is_remote_track(next_track):
