@@ -24,21 +24,29 @@ _audacious_ready = False
 
 
 def setup_sink(sink_name: str) -> bool:
-    result = subprocess.run(
-        ["pactl", "list", "sinks", "short"],
-        capture_output=True, text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["pactl", "list", "sinks", "short"],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return False
+    if result.returncode != 0:
+        return False
     if sink_name in result.stdout:
         return True
-    subprocess.run(
-        [
-            "pactl", "load-module", "module-null-sink",
-            f"sink_name={sink_name}",
-            "sink_properties=device.description=Robbo_Obibok",
-        ],
-        capture_output=True,
-    )
-    return True
+    try:
+        created = subprocess.run(
+            [
+                "pactl", "load-module", "module-null-sink",
+                f"sink_name={sink_name}",
+                "sink_properties=device.description=Robbo_Obibok",
+            ],
+            capture_output=True,
+        )
+    except OSError:
+        return False
+    return created.returncode == 0
 
 
 def start_player(sink_name: str = "robbo_bot") -> bool:
@@ -205,7 +213,9 @@ class AudioController:
     sink_name: str = "robbo_bot"
 
     def setup(self) -> None:
-        setup_sink(self.sink_name)
+        if not setup_sink(self.sink_name):
+            logger.error("Failed to set up PulseAudio sink %s", self.sink_name)
+            return
         if start_player(self.sink_name):
             setup_sid_config()
             enable_compressor()
@@ -238,5 +248,5 @@ class AudioController:
         set_volume_for_collection(collection_id, self.sink_name)
 
     def ensure_ready(self) -> None:
-        setup_sink(self.sink_name)
-        ensure_audacious(self.sink_name)
+        if setup_sink(self.sink_name):
+            ensure_audacious(self.sink_name)

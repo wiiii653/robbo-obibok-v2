@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.bot import CollectionCog, ObibokBot, PlaybackCog
+from src.bot import CollectionCog, FavoritesCog, ObibokBot, PlaybackCog
 from src.favorites import Favorites, PlaylistLibrary
 from src.models import PlaybackState
 from src.playback import PlaybackEngine
@@ -190,6 +190,7 @@ class TestPlaybackLogic:
     async def test_jump_awaits_engine_and_reinstalls_monitor(self, tmp_path):
         bot = _make_bot(tmp_path)
         cog = PlaybackCog(bot)
+        bot.get_state(123).queue = ["a.sap", "b.sap"]
         ctx = MagicMock()
         ctx.guild.id = 123
         ctx.guild.name = "Guild"
@@ -204,6 +205,33 @@ class TestPlaybackLogic:
         bot.engine.jump_to_track.assert_awaited_once_with(bot.get_state(123), 1)
         cog._after_track_started.assert_awaited_once()
         cog._install_monitor.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_jump_keeps_monitor_running(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.get_state(123).queue = ["a.sap"]
+        bot.playback_lease.acquire(123, "Guild")
+        bot._cancel_monitor = MagicMock()
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.jump.callback(cog, ctx, 2)
+
+        bot._cancel_monitor.assert_not_called()
+        ctx.send.assert_awaited_once_with("Invalid position.")
+
+    @pytest.mark.asyncio
+    async def test_reaction_remove_is_idempotent_after_restart(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        bot._track_np_message(10, {"filepath": "song.sap", "collection_id": "asma"})
+        payload = MagicMock(message_id=10, user_id=22, emoji="⭐")
+
+        await cog.on_raw_reaction_remove(payload)
+
+        assert bot.engine.favorites.has_track(22, "song.sap", "asma") is False
 
     @pytest.mark.asyncio
     async def test_collection_switch_clears_stale_inactive_state(self, tmp_path):

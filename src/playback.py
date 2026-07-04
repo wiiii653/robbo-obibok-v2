@@ -51,10 +51,6 @@ class PlaybackEngine:
         state.subsong_total = 0
 
     def _clear_remote_state(self, state: PlaybackState) -> None:
-        if state.predownload_path and not Path(state.predownload_path).exists():
-            state.predownload_path = ""
-            state.predownload_url = ""
-            return
         state.predownload_path = ""
         state.predownload_url = ""
 
