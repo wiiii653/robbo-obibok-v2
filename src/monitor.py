@@ -64,7 +64,7 @@ def should_advance_after_stop(
 @dataclass
 class TrackMonitor:
     audio: AudioController
-    empty_timeout: int = 60
+    empty_timeout: int = 0
     _last_output: int = field(default=0, init=False, repr=False)
     _last_track: str = field(default="", init=False, repr=False)
     _not_playing_since: float | None = field(default=None, init=False, repr=False)
@@ -106,7 +106,7 @@ class TrackMonitor:
             return
 
         if get_voice_members and on_empty:
-            members = await asyncio.to_thread(get_voice_members)
+            members = get_voice_members()
             if members == 0:
                 now = asyncio.get_running_loop().time()
                 if self.empty_timeout <= 0:
@@ -123,7 +123,7 @@ class TrackMonitor:
                 return
             self._empty_since = None
 
-        playing = await asyncio.to_thread(self.audio.is_playing)
+        playing = self.audio.is_playing()
 
         if not playing:
             now = asyncio.get_event_loop().time()
@@ -141,7 +141,7 @@ class TrackMonitor:
             return
 
         self._not_playing_since = None
-        elapsed = await asyncio.to_thread(self.audio.output_length)
+        elapsed = self.audio.output_length()
         if elapsed < 0:
             return
 
@@ -177,7 +177,7 @@ class TrackMonitor:
 
         self._last_output = elapsed
 
-        total = await asyncio.to_thread(self.audio.song_length)
+        total = self.audio.song_length()
         timeout = compute_timeout(total, is_console_format=is_console)
         if elapsed >= timeout:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)

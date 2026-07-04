@@ -56,19 +56,30 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
             return True
         _audacious_ready = False
 
-    subprocess.Popen(
+    proc = subprocess.Popen(
         ["audacious", "--headless"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env={**os.environ, "PULSE_SINK": sink_name},
     )
-    for _ in range(20):
-        if _audtool_call("version"):
-            _audacious_ready = True
-            return True
-        time.sleep(1)
-    logger.warning("Audacious D-Bus not ready after 20s")
-    return False
+    try:
+        for _ in range(20):
+            if _audtool_call("version"):
+                _audacious_ready = True
+                return True
+            time.sleep(1)
+        logger.warning("Audacious D-Bus not ready after 20s")
+        return False
+    finally:
+        if not _audacious_ready and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
 
 
 def kill_player() -> None:
