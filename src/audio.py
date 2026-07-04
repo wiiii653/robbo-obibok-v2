@@ -139,6 +139,15 @@ def song_length() -> int:
         return -1
 
 
+def current_song() -> str:
+    """Return the song title as reported by Audacious (audtool current-song)."""
+    result = subprocess.run(
+        ["audtool", "current-song"],
+        capture_output=True, text=True, timeout=10,
+    )
+    return result.stdout.strip()
+
+
 def get_volume(sink_name: str) -> int | None:
     result = subprocess.run(
         ["pactl", "get-sink-volume", sink_name],
@@ -255,6 +264,9 @@ class AudioController:
 
     def song_length(self) -> int:
         return song_length()
+
+    def current_song(self) -> str:
+        return current_song()
 
     def get_volume(self) -> int | None:
         return get_volume(self.sink_name)

@@ -247,7 +247,11 @@ class PlaybackCog(commands.Cog):
         collection_id = state.current_collection_id or state.collection_mode
         col = get_collection(collection_id)
         meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
-        title = meta.get("NAME", state.current_track.rsplit("/", 1)[-1])
+        title = meta.get("NAME", "") or ""
+        if not title:
+            title = self.bot.engine.audio.current_song()
+        if not title:
+            title = state.current_track.rsplit("/", 1)[-1]
         author = meta.get("AUTHOR", "Unknown")
         embed = now_playing_embed(
             title=title,
@@ -434,7 +438,11 @@ class PlaybackCog(commands.Cog):
         collection_id = state.current_collection_id or state.collection_mode
         meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
         col = get_collection(collection_id)
-        title = meta.get("NAME", state.current_track.rsplit("/", 1)[-1])
+        title = meta.get("NAME", "") or ""
+        if not title:
+            title = self.bot.engine.audio.current_song()
+        if not title:
+            title = state.current_track.rsplit("/", 1)[-1]
         author = meta.get("AUTHOR", "")
         embed = now_playing_embed(
             title=title,

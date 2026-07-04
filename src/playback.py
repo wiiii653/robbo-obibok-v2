@@ -57,8 +57,11 @@ class PlaybackEngine:
     def _prepare_subsong_playback(self, state: PlaybackState, track_path: Path) -> Path:
         track_key = str(track_path)
         ext = track_key.rsplit(".", 1)[-1].lower() if "." in track_key else ""
-        # AY/YM are now handled natively by Audacious console.so — skip ffmpeg conversion
-        if ext in ("ay", "ym"):
+        # AY/YM and all module formats are handled natively by Audacious
+        # (console.so for SID/SAP/AY/YM, built-in player for MOD/XM/S3M/IT/DMF/MED)
+        # Skip ffmpeg conversion and subsong detection for all of them
+        MODULE_EXTENSIONS = {"mod", "xm", "s3m", "it", "dmf", "med", "sid", "sap"}
+        if ext in ("ay", "ym") or ext in MODULE_EXTENSIONS:
             return track_path
         if state.subsong_path != track_key:
             self._clear_subsong_state(state)
@@ -246,7 +249,16 @@ class PlaybackEngine:
 
     def get_track_metadata(self, filepath: str, collection_id: str) -> dict[str, str]:
         if is_remote_track(filepath):
-            return {}
+            from urllib.parse import unquote, urlparse
+            parsed = urlparse(filepath)
+            # For ModArchive URLs, use module ID as label
+            if "moduleid=" in filepath:
+                mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
+                return {"NAME": f"ModArchive #{mod_id}", "AUTHOR": ""}
+            # For other remote tracks, extract a readable name from the URL path
+            stem = Path(unquote(parsed.path)).stem or "remote"
+            clean = stem.replace("_", " ").replace("-", " ").strip()
+            return {"NAME": clean.title() if clean else "Remote Track", "AUTHOR": ""}
         col = get_collection(collection_id)
         if not col:
             return {}
