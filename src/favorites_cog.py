@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 from .cog_shared import FAVORITE_EMOJI
+from .collection_loader import resolve_collection_for_filepath
 from .favorites import PlaylistLibrary
 
 class FavoritesCog(commands.Cog):
@@ -23,13 +24,16 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        meta = self.bot.engine.get_track_metadata(msg_data["filepath"], msg_data["collection_id"])
+        # Resolve collection from filepath rather than trusting saved state
+        resolved_col = resolve_collection_for_filepath(msg_data["filepath"])
+        collection_id = resolved_col or msg_data["collection_id"]
+        meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
         title = meta.get("NAME", msg_data["filepath"].rsplit("/", 1)[-1].rsplit(".", 1)[0])
         self.bot.engine.favorites.add(
             payload.user_id,
             msg_data["filepath"],
             title,
-            msg_data["collection_id"],
+            collection_id,
             meta.get("AUTHOR", ""),
         )
 
@@ -92,7 +96,7 @@ class FavoritesCog(commands.Cog):
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
         queued = [
-            (track["filepath"], track.get("collection_id") or state.collection_mode)
+            (track["filepath"], resolve_collection_for_filepath(track["filepath"]) or track.get("collection_id") or state.collection_mode)
             for track in filtered
         ]
         playback_cog = self.bot.get_cog("PlaybackCog")
@@ -174,7 +178,7 @@ class FavoritesCog(commands.Cog):
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
         queued = [
-            (track["filepath"], track.get("collection_id") or state.collection_mode)
+            (track["filepath"], resolve_collection_for_filepath(track["filepath"]) or track.get("collection_id") or state.collection_mode)
             for track in playlist.get("tracks", [])
         ]
         playback_cog = self.bot.get_cog("PlaybackCog")

@@ -100,6 +100,51 @@ def _parse_title(filepath: str, *, offset: int, length: int) -> dict[str, str]:
     return {"NAME": title}
 
 
+def resolve_collection_for_filepath(filepath: str) -> str | None:
+    """Determine which collection a filepath belongs to (based on extension/URL patterns).
+    
+    Like v1's favplay logic: check extension and URL patterns to resolve the collection
+    dynamically instead of relying on saved state.
+    """
+    from .remote import is_remote_track
+    if is_remote_track(filepath):
+        low = filepath.lower()
+        # ModArchive URLs
+        if "modarchive" in low or "moduleid=" in low:
+            return "modarchive"
+        # HVSC URLs
+        if "hvsc" in low or "c64" in low or filepath.endswith(".sid"):
+            return "hvsc"
+        # ASMA URLs
+        if "asma" in low or "atari" in low or filepath.endswith(".sap"):
+            return "asma"
+        return None
+    
+    # Local track — check extension against each collection
+    ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+    if not ext:
+        return None
+    
+    # Unambiguous extensions
+    extension_map = {
+        "sid": "hvsc",
+        "sap": "asma",
+        "ay": "ay",
+        "ym": "ym",
+    }
+    if ext in extension_map:
+        return extension_map[ext]
+    
+    # Ambiguous module extensions — check each collection's extension list
+    # Priority: more specific collections first, fallback to modarchive
+    for col_id in ("tiny", "kgen", "modarchive"):
+        col = COLLECTIONS.get(col_id)
+        if col and ext in col.extensions:
+            return col_id
+    
+    return None
+
+
 def extract_metadata(filepath: str, collection_id: str) -> dict[str, str]:
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
     if ext == "sap":
