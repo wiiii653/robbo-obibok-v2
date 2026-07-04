@@ -53,6 +53,15 @@ def parse_sap_header(filepath: str) -> dict[str, str]:
     return meta
 
 
+def _clean_metadata(s: str) -> str:
+    """Strip leading/f trailing non-printable chars from SID/AY/YM metadata fields."""
+    s = s.strip("\x00 ")
+    # Strip leading control characters (ASCII < 32)
+    while s and ord(s[0]) < 32:
+        s = s[1:]
+    return s
+
+
 def parse_sid_header(filepath: str) -> dict[str, str]:
     try:
         with open(filepath, "rb") as f:
@@ -61,10 +70,14 @@ def parse_sid_header(filepath: str) -> dict[str, str]:
         return {}
     if len(data) < 256 or data[:4] != b"PSID":
         return {}
-    title = data[16:48].decode("ascii", errors="replace").strip("\x00")
-    author = data[48:80].decode("ascii", errors="replace").strip("\x00")
-    copyright = data[80:112].decode("ascii", errors="replace").strip("\x00")
-    return {"NAME": title, "AUTHOR": author, "COPYRIGHT": copyright}
+    title = data[16:48].decode("ascii", errors="replace")
+    author = data[48:80].decode("ascii", errors="replace")
+    copyright = data[80:112].decode("ascii", errors="replace")
+    return {
+        "NAME": _clean_metadata(title),
+        "AUTHOR": _clean_metadata(author),
+        "COPYRIGHT": _clean_metadata(copyright),
+    }
 
 
 def parse_mod_header(filepath: str) -> dict[str, str]:
@@ -97,7 +110,7 @@ def _parse_title(filepath: str, *, offset: int, length: int) -> dict[str, str]:
     except OSError:
         return {}
     title = data.decode("ascii", errors="replace").rstrip("\x00 ")
-    return {"NAME": title}
+    return {"NAME": _clean_metadata(title)}
 
 
 def resolve_collection_for_filepath(filepath: str) -> str | None:
