@@ -145,6 +145,20 @@ class Favorites:
         self._ensure_loaded()
         return list(self._data.get(str(user_id), []))
 
+    def set_track_metadata(self, user_id: int, filepath: str, title: str, author: str = "") -> bool:
+        self._ensure_loaded()
+        uid = str(user_id)
+        tracks = self._data.get(uid, [])
+        for track in tracks:
+            if track.get("filepath") == filepath:
+                if title:
+                    track["title"] = title
+                if author:
+                    track["author"] = author
+                self._save()
+                return True
+        return False
+
     def has_track(self, user_id: int, filepath: str) -> bool:
         return self._track_index(user_id, filepath) is not None
 
