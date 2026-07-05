@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .discord_compat import commands, discord
-
 from .collection_loader import get_collection
+from .discord_compat import commands, discord
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
