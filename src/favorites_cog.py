@@ -188,13 +188,17 @@ class FavoritesCog(commands.Cog):
         else:
             await ctx.send("Nothing to blacklist.")
 
-    @commands.command()
+    @commands.command(aliases=["blks", "blklist"])
     async def blks(self, ctx: commands.Context) -> None:
         tracks = self.bot.engine.blacklist.get_tracks(ctx.author.id)
         if not tracks:
-            return await ctx.send("Blacklist empty.")
-        lines = [f"`{i+1}.` `{t.rsplit('/', 1)[-1]}`" for i, t in enumerate(tracks)]
-        await ctx.send("**Blacklist:**\n" + "\n".join(lines))
+            return await ctx.send("📭 **No blacklisted tracks.** Use `!blk` on a playing track to add it here.")
+        lines = [f"⛔ **Your Blacklist ({len(tracks)} tracks)**"]
+        for i, t in enumerate(tracks, 1):
+            name = t.rsplit("/", 1)[-1] if "/" in t else t
+            lines.append(f"`{i}.` {name}")
+        for chunk_start in range(0, len(lines), 15):
+            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
 
     @commands.command()
     async def blkrm(self, ctx: commands.Context, index: int) -> None:
