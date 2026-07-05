@@ -140,6 +140,10 @@ class FavoritesCog(commands.Cog):
                     name = meta.get("NAME", "")
                     if name:
                         name = _clean_re.sub('', name).strip()
+                    if name:
+                        self.bot.engine.favorites.set_track_metadata(
+                            ctx.author.id, t["filepath"], name, meta.get("AUTHOR", "")
+                        )
                 if name:
                     bad_titles_fixed += 1
             if not name:
@@ -153,7 +157,7 @@ class FavoritesCog(commands.Cog):
             logger.info("!favs: repaired %d bad titles", bad_titles_fixed)
         for i, chunk_start in enumerate(range(0, len(lines), 15)):
             if i > 0:
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(0.5)
             await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
 
     @commands.command(aliases=["fp"])
