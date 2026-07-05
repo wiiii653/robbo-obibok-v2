@@ -289,7 +289,7 @@ class PlaybackCog(commands.Cog):
         collection_id = state.current_collection_id or state.collection_mode
         col = get_collection(collection_id)
         meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
-        title = self.bot.engine.audio.current_song()
+        title = await self.bot.engine.audio.async_current_song()
         if not title:
             title = meta.get("NAME", "") or ""
         if not title:
@@ -487,7 +487,7 @@ class PlaybackCog(commands.Cog):
         collection_id = state.current_collection_id or state.collection_mode
         col = get_collection(collection_id)
         meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
-        title = self.bot.engine.audio.current_song()
+        title = await self.bot.engine.audio.async_current_song()
         if not title:
             title = meta.get("NAME", "") or ""
         if not title:

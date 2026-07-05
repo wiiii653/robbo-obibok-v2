@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -281,14 +282,26 @@ class AudioController:
     def is_playing(self) -> bool:
         return is_playing()
 
+    async def async_is_playing(self) -> bool:
+        return await asyncio.to_thread(is_playing)
+
     def output_length(self) -> int:
         return output_length()
+
+    async def async_output_length(self) -> int:
+        return await asyncio.to_thread(output_length)
 
     def song_length(self) -> int:
         return song_length()
 
+    async def async_song_length(self) -> int:
+        return await asyncio.to_thread(song_length)
+
     def current_song(self) -> str:
         return current_song()
+
+    async def async_current_song(self) -> str:
+        return await asyncio.to_thread(current_song)
 
     def get_volume(self) -> int | None:
         return get_volume(self.sink_name)
@@ -298,6 +311,9 @@ class AudioController:
 
     def set_volume_for_playback(self, filepath: str) -> None:
         set_volume_for_playback(filepath, self.sink_name)
+
+    async def async_set_volume_for_playback(self, filepath: str) -> None:
+        return await asyncio.to_thread(set_volume_for_playback, filepath, self.sink_name)
 
     def ensure_ready(self) -> None:
         if setup_sink(self.sink_name):
