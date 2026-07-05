@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import time
 from typing import TYPE_CHECKING
@@ -17,6 +18,8 @@ from .remote import is_remote_track
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
+
+logger = logging.getLogger(__name__)
 
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
