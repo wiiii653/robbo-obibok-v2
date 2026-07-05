@@ -33,7 +33,6 @@ def test_remote_track_is_downloaded_before_play(tmp_path, monkeypatch):
         return str(path)
 
     engine._download_remote_track = fake_download  # type: ignore[assignment]
-    engine._prepare_subsong_playback = lambda state, path: path  # type: ignore[assignment]
 
     async def immediate(func, *args, **kwargs):
         return func(*args, **kwargs)

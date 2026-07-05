@@ -31,7 +31,6 @@ from .remote import (
     remote_cache_path,
     uses_module_cache,
 )
-from .subsong import cleanup_subsong_files, convert_subsong, get_subsongs, subsong_temp_path
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +44,11 @@ class PlaybackEngine:
     archive_root: str = "archiwum"
     shuffle_queue: bool = True
 
-    def _clear_subsong_state(self, state: PlaybackState) -> None:
-        cleanup_subsong_files(state.subsong_wavs)
-        state.subsong_wavs = []
-        state.subsong_path = ""
-        state.subsong_current = -1
-        state.subsong_total = 0
-
     def _clear_remote_state(self, state: PlaybackState) -> None:
         state.predownload_path = ""
         state.predownload_url = ""
 
     def _reset_runtime_state(self, state: PlaybackState) -> None:
-        self._clear_subsong_state(state)
         self._clear_remote_state(state)
         state.current_track = ""
         state.current_collection_id = ""
@@ -65,29 +56,6 @@ class PlaybackEngine:
         state.voice_channel_id = None
         state.search_results = []
         state.search_collection_id = ""
-
-    def _prepare_subsong_playback(self, state: PlaybackState, track_path: Path) -> Path:
-        track_key = str(track_path)
-        ext = track_key.rsplit(".", 1)[-1].lower() if "." in track_key else ""
-        # AY/YM and all module formats are handled natively by Audacious
-        # (console.so for SID/SAP/AY/YM, built-in player for MOD/XM/S3M/IT/DMF/MED)
-        # Skip ffmpeg conversion and subsong detection for all of them
-        MODULE_EXTENSIONS = {"mod", "xm", "s3m", "it", "dmf", "med", "sid", "sap"}
-        if ext in ("ay", "ym") or ext in MODULE_EXTENSIONS:
-            return track_path
-        if state.subsong_path != track_key:
-            self._clear_subsong_state(state)
-            state.subsong_path = track_key
-            durations = get_subsongs(track_key)
-            state.subsong_total = len(durations)
-            state.subsong_current = 0 if state.subsong_total > 1 else -1
-        if state.subsong_total > 1 and state.subsong_current >= 0:
-            wav_path = subsong_temp_path(self.root_dir, track_key, state.subsong_current)
-            if wav_path not in state.subsong_wavs:
-                if convert_subsong(track_key, state.subsong_current, wav_path):
-                    state.subsong_wavs.append(wav_path)
-            return Path(wav_path) if Path(wav_path).exists() else track_path
-        return track_path
 
     async def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
         if collection_id:
@@ -133,7 +101,6 @@ class PlaybackEngine:
                     state.current_collection_id = ""
                     return None
                 continue
-            playback_path = self._prepare_subsong_playback(state, playback_path)
             self.audio.set_volume_for_playback(str(playback_path))
             success = self.audio.play(str(playback_path))
             if success:
@@ -161,11 +128,6 @@ class PlaybackEngine:
         return None
 
     async def skip_track(self, state: PlaybackState) -> str | None:
-        if state.subsong_total > 1 and state.subsong_path:
-            if state.subsong_current + 1 < state.subsong_total:
-                state.subsong_current += 1
-                return await self.play_track(state)
-            self._clear_subsong_state(state)
         track = next_track(state)
         if not track:
             return None
