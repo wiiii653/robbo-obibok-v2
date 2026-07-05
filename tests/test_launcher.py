@@ -62,8 +62,9 @@ class TestSetupLogging:
         assert True
 
     @patch("src.launcher.sys.exit")
+    @patch("src.launcher.load_dotenv")
     @patch("src.launcher.load_config")
-    def test_main_no_token_exits(self, mock_config, mock_exit):
+    def test_main_no_token_exits(self, mock_config, mock_dotenv, mock_exit):
         mock_config.return_value = AppConfig()
         mock_exit.side_effect = SystemExit
         from src.launcher import main
@@ -75,8 +76,9 @@ class TestSetupLogging:
 
     @patch("src.launcher.sys.exit")
     @patch("src.launcher.check_audacious_version")
+    @patch("src.launcher.load_dotenv")
     @patch("src.launcher.load_config")
-    def test_main_rejects_unsupported_audacious(self, mock_config, mock_check, mock_exit):
+    def test_main_rejects_unsupported_audacious(self, mock_config, mock_dotenv, mock_check, mock_exit):
         config = AppConfig()
         config.token = "test-token"
         mock_config.return_value = config
