@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from typing import TYPE_CHECKING
 
 import discord
@@ -41,7 +42,10 @@ class FavoritesCog(commands.Cog):
         else:
             collection_id = msg_data["collection_id"] or resolve_collection_for_filepath(filepath) or ""
         meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
-        raw_title = meta.get("NAME", "")
+        raw_title = meta.get("NAME", "") or ""
+        # Strip non-printable chars from metadata (SID/SAP headers often contain binary prefixes)
+        if raw_title:
+            raw_title = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', raw_title).strip()
         if not raw_title:
             filepath = msg_data["filepath"]
             # ModArchive download URLs have no real filename — extract module ID
@@ -49,13 +53,13 @@ class FavoritesCog(commands.Cog):
                 mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
                 raw_title = f"ModArchive #{mod_id}"
             else:
-                raw_title = filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                raw_title = filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ")
         self.bot.engine.favorites.add(
             payload.user_id,
             msg_data['filepath'],
             raw_title,
             collection_id,
-            meta.get("AUTHOR", ""),
+            meta.get("AUTHOR", "") or "",
         )
 
     @commands.Cog.listener()
@@ -89,24 +93,35 @@ class FavoritesCog(commands.Cog):
                 return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
             lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
             downloads_seen = 0
+            bad_titles_seen = 0
             for i, t in enumerate(tracks, 1):
                 name = t.get("title", "")
+                # Strip non-printable chars (binary metadata prefixes: SID/SAP headers, etc.)
+                if name:
+                    name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
+                # Fix old "downloads" titles from ModArchive URLs
                 if not name or name == "downloads":
                     filepath = t["filepath"]
-                    logger.warning("!favs BAD title at [%d]: title=%r fp=%s", i, name, filepath)
-                    downloads_seen += 1
-                    # Clean up existing modarchive titles saved as "downloads"
+                    bad_titles_seen += 1
                     if "downloads.php?moduleid=" in filepath:
                         mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
                         name = f"ModArchive #{mod_id}"
                     else:
+                        # Try to fetch real metadata
                         meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
                         name = meta.get("NAME", "")
+                        # Also strip nulls from fetched metadata
+                        if name:
+                            name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
                 if not name:
-                    name = t["filepath"].rsplit("/", 1)[-1]
+                    fallback = t["filepath"].rsplit("/", 1)[-1]
+                    # Remove extension for cleaner display
+                    fallback = fallback.rsplit(".", 1)[0].replace("_", " ")
+                    name = fallback
                 author_s = f" — {t['author']}" if t.get("author") else ""
                 lines.append(f"`{i}.` {name}{author_s}")
-            logger.info("!favs sending %d chunks (%d bad titles)", (len(lines) + 14) // 15, downloads_seen)
+            if bad_titles_seen:
+                logger.info("!favs: repaired %d bad titles", bad_titles_seen)
             first = True
             for chunk_start in range(0, len(lines), 15):
                 if not first:
@@ -160,6 +175,7 @@ class FavoritesCog(commands.Cog):
         try:
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
+                await asyncio.sleep(0.5)  # let Discord clean up old session
             await ctx.author.voice.channel.connect()
             state.voice_channel_id = ctx.author.voice.channel.id
             await ctx.send(f"🎵 **Playing {len(filtered)} favorites!**")
@@ -247,6 +263,7 @@ class FavoritesCog(commands.Cog):
         try:
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
+                await asyncio.sleep(0.5)  # let Discord clean up old session
             await ctx.author.voice.channel.connect()
             state.voice_channel_id = ctx.author.voice.channel.id
             await ctx.send(f"🎵 **Playing playlist `{playlist.get('name', name)}`!**")

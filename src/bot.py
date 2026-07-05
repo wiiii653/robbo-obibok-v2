@@ -63,6 +63,9 @@ class ObibokBot(commands.Bot):
 
     def _start_stream(self, guild_id: int, voice_client: discord.VoiceClient) -> None:
         """Start or restart the MonitorAudioSource on the given voice client."""
+        if not voice_client or not voice_client.is_connected():
+            logger.warning("_start_stream: voice client not connected for guild %s", guild_id)
+            return
         old = self._active_streams.pop(guild_id, None)
         if old and hasattr(old, "cleanup"):
             old.cleanup()
