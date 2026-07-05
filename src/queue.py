@@ -55,7 +55,7 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
     # Reject trivially small queues — they are almost certainly remnants
     # from a failed run (e.g. first track failed, queue saved with 1 entry
     # on stop, then restored on next start instead of building a fresh one).
-    if len(queue) < 3:
+    if len(queue) < 2:
         return False
     queue_collection_ids = saved.get("queue_collection_ids")
     if queue_collection_ids is not None:
@@ -198,7 +198,3 @@ class Blacklist:
     def get_tracks(self, user_id: int) -> list[str]:
         self._ensure_loaded()
         return list(self._data.get(str(user_id), []))
-
-    def filter_queue(self, queue: list[str], user_id: int) -> list[str]:
-        blocked = set(self.get_tracks(user_id))
-        return [t for t in queue if t not in blocked]

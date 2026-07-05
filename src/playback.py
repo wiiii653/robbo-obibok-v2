@@ -56,6 +56,16 @@ class PlaybackEngine:
         state.predownload_path = ""
         state.predownload_url = ""
 
+    def _reset_runtime_state(self, state: PlaybackState) -> None:
+        self._clear_subsong_state(state)
+        self._clear_remote_state(state)
+        state.current_track = ""
+        state.current_collection_id = ""
+        state.is_playing = False
+        state.voice_channel_id = None
+        state.search_results = []
+        state.search_collection_id = ""
+
     def _prepare_subsong_playback(self, state: PlaybackState, track_path: Path) -> Path:
         track_key = str(track_path)
         ext = track_key.rsplit(".", 1)[-1].lower() if "." in track_key else ""
@@ -86,8 +96,7 @@ class PlaybackEngine:
         if not paths:
             return None
         state.tracks = paths
-        self._clear_subsong_state(state)
-        self._clear_remote_state(state)
+        self._reset_runtime_state(state)
         blacklist_tracks = self.blacklist.get_tracks(user_id)
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
@@ -119,11 +128,14 @@ class PlaybackEngine:
             if playback_path is None:
                 logger.warning("play_track: track not resolved, skipping: %s", track)
                 if next_track(state) is None:
+                    state.is_playing = False
+                    state.current_track = ""
+                    state.current_collection_id = ""
                     return None
                 continue
             playback_path = self._prepare_subsong_playback(state, playback_path)
-            await self.audio.async_set_volume_for_playback(str(playback_path))
-            success = await asyncio.to_thread(self.audio.play, str(playback_path))
+            self.audio.set_volume_for_playback(str(playback_path))
+            success = self.audio.play(str(playback_path))
             if success:
                 state.current_track = track
                 state.current_collection_id = self._collection_for_position(state)
@@ -138,8 +150,14 @@ class PlaybackEngine:
             # Play failed — skip to next track instead of stopping the radio
             logger.warning("play_track: failed to play %s, skipping to next", track)
             if next_track(state) is None:
+                state.is_playing = False
+                state.current_track = ""
+                state.current_collection_id = ""
                 return None
         logger.error("play_track: exhausted 5 skips, giving up")
+        state.is_playing = False
+        state.current_track = ""
+        state.current_collection_id = ""
         return None
 
     async def skip_track(self, state: PlaybackState) -> str | None:
@@ -155,11 +173,7 @@ class PlaybackEngine:
 
     async def stop(self, state: PlaybackState) -> None:
         self.audio.stop()
-        state.is_playing = False
-        state.current_track = ""
-        state.current_collection_id = ""
-        self._clear_subsong_state(state)
-        self._clear_remote_state(state)
+        self._reset_runtime_state(state)
         save_queue(state, self.root_dir)
 
     async def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
@@ -175,11 +189,7 @@ class PlaybackEngine:
     async def clear(self, state: PlaybackState) -> None:
         clear_queue(state)
         self.audio.stop()
-        state.is_playing = False
-        state.current_track = ""
-        state.current_collection_id = ""
-        self._clear_subsong_state(state)
-        self._clear_remote_state(state)
+        self._reset_runtime_state(state)
         save_queue(state, self.root_dir)
 
     def search(self, query: str, state: PlaybackState) -> list[str]:

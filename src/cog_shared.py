@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from discord import Guild, Member, VoiceClient
+from .discord_compat import discord
 
 if TYPE_CHECKING:
     import discord
+    from discord import Guild, Member, VoiceClient
 
 logger = logging.getLogger(__name__)
 FAVORITE_EMOJI = "⭐"

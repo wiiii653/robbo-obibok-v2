@@ -7,8 +7,7 @@ import random
 import time
 from typing import TYPE_CHECKING
 
-import discord
-from discord.ext import commands
+from .discord_compat import commands, discord
 
 from .cog_shared import FAVORITE_EMOJI, FakeContext, logger
 from .collection_loader import get_collection, load_raw_paths
@@ -18,6 +17,20 @@ from .remote import is_remote_track
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
+
+async def _noop_send(*args, **kwargs):
+    return None
+
+
+class _PlaybackCtx:
+    def __init__(self, guild, author, voice_client, send_fn) -> None:
+        self.guild = guild
+        self.author = author
+        self.voice_client = voice_client
+        self._send = send_fn
+
+    async def send(self, *args, **kwargs):
+        return await self._send(*args, **kwargs)
 
 
 class PlaybackCog(commands.Cog):
@@ -43,27 +56,26 @@ class PlaybackCog(commands.Cog):
                 continue
             state = self.bot.get_state(guild.id)
             if state.is_playing:
-                return
+                continue
             if not self.bot.try_acquire_lease(guild):
-                return
+                continue
             self._last_auto_start = time.time()
             try:
-                vc = await channel.connect()
-                state.voice_channel_id = channel.id
                 track = await self.bot.engine.start_radio(state, user_id=members[0].id)
                 if not track:
                     self.bot.release_lease(guild.id)
-                    await vc.disconnect()
-                    return
-                # Build a minimal fake ctx for _play_and_monitor
-                ctx = FakeContext(guild, members[0], vc, send=channel.send)
-                await self._play_and_monitor(ctx, state)
+                    continue
+
+                await self._connect_and_play(
+                    _PlaybackCtx(guild, members[0], None, _noop_send),
+                    state,
+                    channel,
+                    failure_prefix="Auto-reconnect failed",
+                )
                 logger.info("Auto-reconnect: resumed playback for %d users in %s", len(members), channel.name)
             except Exception as exc:
                 logger.warning("Auto-reconnect failed: %s", exc)
                 self.bot.release_lease(guild.id)
-                if vc:
-                    await vc.disconnect()
 
     async def _can_control_audio(self, ctx: commands.Context, *, require_owner: bool = False) -> bool:
         if not ctx.guild:
@@ -102,13 +114,32 @@ class PlaybackCog(commands.Cog):
             await ctx.voice_client.disconnect()
         await ctx.send(message)
 
+    async def _connect_and_play(
+        self,
+        ctx: commands.Context,
+        state: PlaybackState,
+        voice_channel,
+        *,
+        start_message: str = "",
+        failure_prefix: str,
+    ) -> None:
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+            ctx.voice_client = await voice_channel.connect()
+            state.voice_channel_id = voice_channel.id
+            if start_message:
+                await ctx.send(start_message)
+            await self._play_and_monitor(ctx, state)
+        except Exception as exc:
+            await self._finish_playback(ctx, state, f"{failure_prefix}: {exc}")
+
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
-        # Handle bot's own voice reconnect — restart stream if we were playing
+        # Handle bot's own voice reconnect — restart stream if we were playing.
         if self.bot.user and member.bot and member.id == self.bot.user.id:
             logger.debug("Bot voice state: %s → %s", before.channel, after.channel)
             if after.channel is not None and before.channel is None:
-                # Bot reconnected to voice — restart stream and monitor
                 guild_id = member.guild.id
                 state = self.bot.get_state(guild_id)
                 if state.is_playing:
@@ -119,6 +150,7 @@ class PlaybackCog(commands.Cog):
                         self._install_monitor(self._get_fallback_ctx(member, vc), state)
             return
 
+        # Handle bot's own voice reconnect — restart stream if we were playing
         if member.bot:
             return
         if not self.bot.auto_start_channel:
@@ -143,37 +175,28 @@ class PlaybackCog(commands.Cog):
         if not self.bot.try_acquire_lease(member.guild):
             return
         self._last_auto_start = time.time()
-        vc = None
         try:
-            vc = await after.channel.connect()
             track = await self.bot.engine.start_radio(state, user_id=member.id)
             if not track:
                 self.bot.release_lease(member.guild.id)
-                await vc.disconnect()
                 return
-            state.voice_channel_id = after.channel.id
-
-            async def noop_send(*args, **kwargs):
-                return None
-
-            send_fn = after.channel.send if after.channel else noop_send
-            ctx = FakeContext(member.guild, member, vc, send_fn)
-            await self._play_and_monitor(ctx, state)
+            ctx = _PlaybackCtx(member.guild, member, None, after.channel.send)
+            await self._connect_and_play(ctx, state, after.channel, failure_prefix="Auto-start failed")
         except Exception as exc:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(member.guild.id)
             self.bot._cancel_predownload(member.guild.id)
             self.bot._cancel_monitor(member.guild.id)
             self.bot.release_lease(member.guild.id)
-            if vc:
-                await vc.disconnect()
             logger.warning("Auto-start failed: %s", exc)
 
     def _get_fallback_ctx(self, member: discord.Member, vc) -> FakeContext:
         """Build a fallback context for stream restart after bot voice reconnect."""
         from .cog_shared import FakeContext
+
         async def noop_send(*args, **kwargs):
             return None
+
         return FakeContext(member.guild, member, vc, noop_send)
 
     @commands.command(aliases=["pl", "radio", "start"])
@@ -191,15 +214,13 @@ class PlaybackCog(commands.Cog):
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(query, state.collection_mode)])
-            try:
-                if ctx.voice_client:
-                    await ctx.voice_client.disconnect()
-                await ctx.author.voice.channel.connect()
-                state.voice_channel_id = ctx.author.voice.channel.id
-                await ctx.send("Starting remote track...")
-                await self._play_and_monitor(ctx, state)
-            except Exception as exc:
-                await self._finish_playback(ctx, state, f"Failed to play remote track: {exc}")
+            await self._connect_and_play(
+                ctx,
+                state,
+                ctx.author.voice.channel,
+                start_message="Starting remote track...",
+                failure_prefix="Failed to play remote track",
+            )
             return
 
         if query.isdigit():
@@ -217,14 +238,12 @@ class PlaybackCog(commands.Cog):
                 return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
-            try:
-                if ctx.voice_client:
-                    await ctx.voice_client.disconnect()
-                await ctx.author.voice.channel.connect()
-                state.voice_channel_id = ctx.author.voice.channel.id
-                await self._play_and_monitor(ctx, state)
-            except Exception as exc:
-                await self._finish_playback(ctx, state, f"Failed to play selection: {exc}")
+            await self._connect_and_play(
+                ctx,
+                state,
+                ctx.author.voice.channel,
+                failure_prefix="Failed to play selection",
+            )
             return
 
         if query:
@@ -242,15 +261,13 @@ class PlaybackCog(commands.Cog):
             state.search_results = results
             state.search_collection_id = state.collection_mode
             self._set_queue(state, [(path, state.collection_mode) for path in results])
-            try:
-                if ctx.voice_client:
-                    await ctx.voice_client.disconnect()
-                await ctx.author.voice.channel.connect()
-                state.voice_channel_id = ctx.author.voice.channel.id
-                await ctx.send(f"Starting search result for `{query}`...")
-                await self._play_and_monitor(ctx, state)
-            except Exception as exc:
-                await self._finish_playback(ctx, state, f"Failed to play search result: {exc}")
+            await self._connect_and_play(
+                ctx,
+                state,
+                ctx.author.voice.channel,
+                start_message=f"Starting search result for `{query}`...",
+                failure_prefix="Failed to play search result",
+            )
             return
 
         if ctx.voice_client:
@@ -261,17 +278,19 @@ class PlaybackCog(commands.Cog):
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         try:
             self.bot._cancel_predownload(ctx.guild.id)
-            await ctx.author.voice.channel.connect()
             track = await self.bot.engine.start_radio(state, user_id=ctx.author.id)
             if not track:
                 self.bot.release_lease(ctx.guild.id)
                 if ctx.voice_client:
                     await ctx.voice_client.disconnect()
                 return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
-
-            state.voice_channel_id = ctx.author.voice.channel.id
-            await ctx.send(f"Starting **{state.collection_mode.upper()}** radio...")
-            await self._play_and_monitor(ctx, state)
+            await self._connect_and_play(
+                ctx,
+                state,
+                ctx.author.voice.channel,
+                start_message=f"Starting **{state.collection_mode.upper()}** radio...",
+                failure_prefix="Failed to start playback",
+            )
         except Exception as exc:
             await self._finish_playback(ctx, state, f"Failed to start playback: {exc}")
 
@@ -326,6 +345,7 @@ class PlaybackCog(commands.Cog):
             title=title,
             author=author,
             collection_name=col.name if col else collection_id,
+            collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
             color=col.color if col else 0x00FF00,
@@ -528,6 +548,7 @@ class PlaybackCog(commands.Cog):
             title=title,
             author=author,
             collection_name=col.name if col else collection_id,
+            collection_icon=col.icon if col else "?",
             position=state.position + 1,
             total=len(state.queue),
             color=col.color if col else 0x00FF00,

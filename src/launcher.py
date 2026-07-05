@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .audio import AudioController
+from .audio import check_audacious_version
 from .bot import ObibokBot
 from .config import AppConfig, load_config
 from .favorites import Favorites
@@ -104,6 +105,12 @@ def main() -> None:
 
     if not config.token:
         logger.error("No DISCORD_BOT_TOKEN set. Add it to .env or environment.")
+        sys.exit(1)
+
+    try:
+        check_audacious_version()
+    except RuntimeError as exc:
+        logger.error("%s", exc)
         sys.exit(1)
 
     logger.info("Starting Robbo Obibok v2...")

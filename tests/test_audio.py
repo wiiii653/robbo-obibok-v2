@@ -5,12 +5,17 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.audio import (
-    FORMAT_VOLUMES,
     AudioController,
+    SUPPORTED_AUDACIOUS_VERSION,
+    FORMAT_VOLUMES,
+    check_audacious_version,
+    get_audacious_version,
+    load_format_volumes_from_dict,
     get_volume,
     is_playing,
-    load_format_volumes_from_dict,
     output_length,
     play_file,
     set_volume,
@@ -229,14 +234,14 @@ Sink Input #42
 class TestPlayerLifecycle:
     @patch("src.audio.time.sleep", return_value=None)
     @patch("src.audio.subprocess.Popen")
-    @patch("src.audio._audtool_call")
-    def test_start_player_cleans_up_on_timeout(self, mock_tool, mock_popen, mock_sleep):
+    @patch("src.audio.get_audacious_version")
+    def test_start_player_cleans_up_on_timeout(self, mock_version, mock_popen, mock_sleep):
         proc = MagicMock()
         proc.poll.return_value = None
         mock_popen.return_value = proc
-        mock_tool.return_value = False
-        import src.audio
+        mock_version.return_value = None
         from src.audio import start_player
+        import src.audio
 
         src.audio._audacious_ready = False
 
@@ -261,26 +266,21 @@ class TestPlayerLifecycle:
         stop_playback()
         assert mock_tool.call_count == 2
 
-    @patch("src.audio.subprocess.run")
-    @patch("src.audio._audtool_call")
-    def test_ensure_audacious_alive(self, mock_tool, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="1234")
-        mock_tool.return_value = True
+    @patch("src.audio._is_audacious_alive")
+    @patch("src.audio.start_player")
+    def test_ensure_audacious_alive(self, mock_start, mock_alive):
+        mock_alive.return_value = True
         import src.audio
         from src.audio import ensure_audacious
+
         src.audio._audacious_ready = True
         ensure_audacious()
-        assert mock_tool.call_count >= 1
+        mock_start.assert_not_called()
 
     @patch("src.audio.start_player")
-    @patch("src.audio.subprocess.run")
-    @patch("src.audio._audtool_call")
-    def test_ensure_audacious_dead(self, mock_tool, mock_run, mock_start):
-        mock_run.side_effect = [
-            MagicMock(returncode=1),
-            MagicMock(returncode=0),
-        ]
-        mock_tool.side_effect = [True]
+    @patch("src.audio._is_audacious_alive")
+    def test_ensure_audacious_dead(self, mock_alive, mock_start):
+        mock_alive.return_value = False
         mock_start.return_value = True
         import src.audio
         from src.audio import ensure_audacious
@@ -306,20 +306,36 @@ class TestPlayerLifecycle:
         from src.audio import _audtool_call
         assert _audtool_call("version") is False
 
+    @patch("src.audio.get_audacious_version")
     @patch("src.audio.subprocess.run")
-    def test_is_audacious_alive_true(self, mock_run):
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="1234\n"),
-            MagicMock(returncode=0),
-        ]
+    def test_is_audacious_alive_true(self, mock_run, mock_version):
+        mock_run.return_value = MagicMock(returncode=0)
+        mock_version.return_value = "4.6.1"
         from src.audio import _is_audacious_alive
         assert _is_audacious_alive() is True
 
+    @patch("src.audio.get_audacious_version")
     @patch("src.audio.subprocess.run")
-    def test_is_audacious_alive_false(self, mock_run):
-        mock_run.return_value = MagicMock(returncode=1)
+    def test_is_audacious_alive_false(self, mock_run, mock_version):
+        mock_version.return_value = None
         from src.audio import _is_audacious_alive
         assert _is_audacious_alive() is False
+
+    @patch("src.audio.subprocess.run")
+    def test_get_audacious_version_parses(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="Audacious 4.6.1")
+        assert get_audacious_version() == "4.6.1"
+
+    @patch("src.audio.subprocess.run")
+    def test_check_audacious_version_accepts_supported(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="Audacious 4.6.1")
+        assert check_audacious_version() == SUPPORTED_AUDACIOUS_VERSION
+
+    @patch("src.audio.subprocess.run")
+    def test_check_audacious_version_rejects_unsupported(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="Audacious 4.6.2")
+        with pytest.raises(RuntimeError):
+            check_audacious_version()
 
 
 class TestAudioConfig:

@@ -7,12 +7,13 @@ def now_playing_embed(
     title: str,
     author: str,
     collection_name: str,
+    collection_icon: str,
     position: int,
     total: int,
     color: int = 0x00FF00,
 ) -> dict:
     return {
-        "title": "🎶 Now Playing",
+        "title": f"{collection_icon} Now Playing",
         "description": f"**{title}**\nby {author}" if author else f"**{title}**",
         "color": color,
         "fields": [

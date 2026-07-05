@@ -6,7 +6,7 @@ import logging
 import subprocess
 import time
 
-import discord
+from .discord_compat import discord
 
 logger = logging.getLogger(__name__)
 

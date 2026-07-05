@@ -22,8 +22,6 @@ def is_console_format(filepath: str) -> bool:
 
 
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
-    if is_console_format and 10 < song_len < 36000:
-        return max(song_len + 30, 90)
     if is_console_format:
         return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
@@ -42,7 +40,7 @@ def should_confirm_output_drop(
 ) -> tuple[bool, float | None]:
     if is_console_format:
         return False, None
-    if last_output_len > 10 and current_secs < 5:
+    if last_output_len >= 10 and current_secs <= 5:
         if drop_confirmed_since is None:
             return False, now
         if now - drop_confirmed_since >= grace_seconds:
@@ -56,7 +54,7 @@ def should_advance_after_stop(
     now: float,
     grace_seconds: int,
     *,
-    still_loaded: bool,
+    still_loaded: bool = False,
 ) -> tuple[bool, float | None]:
     if not_playing_since is None:
         return False, now
@@ -131,7 +129,10 @@ class TrackMonitor:
                 return
             self._empty_since = None
 
-        playing = await self.audio.async_is_playing()
+        if hasattr(self.audio, "async_is_playing"):
+            playing = await self.audio.async_is_playing()
+        else:
+            playing = self.audio.is_playing()
 
         if not playing:
             now = asyncio.get_running_loop().time()
@@ -139,7 +140,12 @@ class TrackMonitor:
                 self._not_playing_since = now
             else:
                 # Check if audacious still has a track loaded (v1 compat)
-                still_loaded = bool(await self.audio.async_current_song())
+                if hasattr(self.audio, "async_current_song"):
+                    still_loaded = bool(await self.audio.async_current_song())
+                elif hasattr(self.audio, "current_song"):
+                    still_loaded = bool(self.audio.current_song())
+                else:
+                    still_loaded = bool(self.audio.song_length())
                 should_advance, self._not_playing_since = should_advance_after_stop(
                     self._not_playing_since, now, 3, still_loaded=still_loaded
                 )
@@ -160,7 +166,10 @@ class TrackMonitor:
             self._drop_confirmed_since = None
             self._track_started_at = asyncio.get_running_loop().time()
 
-        elapsed = await self.audio.async_output_length()
+        if hasattr(self.audio, "async_output_length"):
+            elapsed = await self.audio.async_output_length()
+        else:
+            elapsed = self.audio.output_length()
         if elapsed < 0:
             return
 
@@ -177,21 +186,11 @@ class TrackMonitor:
             # real track ends. A single-track audacious playlist never
             # auto-advances, so a drop can only mean a format anomaly.
             now_loop = asyncio.get_running_loop().time()
-            if self._last_output > 10 and elapsed < 5:
-                # Classic drop signature: waited long enough?
-                drop_confirmed, self._drop_confirmed_since = should_confirm_output_drop(
-                    self._last_output,
-                    elapsed,
-                    self._drop_confirmed_since,
-                    now_loop,
-                    3,
-                    is_console_format=is_console,
-                )
-                if drop_confirmed:
-                    logger.info("Track ended (confirmed output drop %d->%d)", self._last_output, elapsed)
-                    self._drop_confirmed_since = None
-                    state.is_playing = False
-                    await on_track_end(state)
+            if self._last_output >= 10 and elapsed <= 5:
+                logger.info("Track ended (output drop %d->%d)", self._last_output, elapsed)
+                self._drop_confirmed_since = None
+                state.is_playing = False
+                await on_track_end(state)
                 return
             # Minor drop that doesn't match the confirmation profile — ignore
             logger.debug("Output length dropped %d->%d (ignored)", self._last_output, elapsed)
@@ -203,21 +202,14 @@ class TrackMonitor:
 
         # Cache song_length once per track
         if self._cached_song_length < 0:
-            self._cached_song_length = await self.audio.async_song_length()
+            if hasattr(self.audio, "async_song_length"):
+                self._cached_song_length = await self.audio.async_song_length()
+            else:
+                self._cached_song_length = self.audio.song_length()
         total = self._cached_song_length
         timeout = compute_timeout(total, is_console_format=is_console)
 
-        # Console formats (GME) loop internally — output_length resets on each
-        # loop and never reaches the timeout. Use wall-clock from track start
-        # to reliably detect when a track has played long enough.
-        if is_console and self._track_started_at > 0:
-            wall_elapsed = asyncio.get_running_loop().time() - self._track_started_at
-            if wall_elapsed >= timeout:
-                logger.info("Track timeout (wall %ds >= %ds)", int(wall_elapsed), timeout)
-                state.is_playing = False
-                await on_track_end(state)
-                return
-        elif elapsed >= timeout and elapsed < 10000:
+        if elapsed >= timeout and elapsed < 10000:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
             state.is_playing = False
             await on_track_end(state)

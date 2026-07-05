@@ -231,7 +231,7 @@ class TestPlaybackLogic:
 
         await cog.on_raw_reaction_remove(payload)
 
-        assert bot.engine.favorites.has_track(22, "song.sap", "asma") is False
+        assert bot.engine.favorites.has_track(22, "song.sap") is False
 
     @pytest.mark.asyncio
     async def test_collection_switch_clears_stale_inactive_state(self, tmp_path):
@@ -312,7 +312,7 @@ class TestPlaybackLogic:
         bot.engine.stop.assert_awaited_once_with(state)
         bot._stop_stream.assert_called_once_with(123)
         voice_client.disconnect.assert_awaited_once()
-        assert bot.playback_lease.is_held is False
+        assert bot.playback_lease.owner_guild_id is None
 
     @pytest.mark.asyncio
     async def test_automatic_advance_reuses_current_monitor(self, tmp_path):

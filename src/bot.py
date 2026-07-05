@@ -6,8 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-import discord
-from discord.ext import commands
+from .discord_compat import commands, discord
 
 from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
 from .lease import PlaybackLease
@@ -159,9 +158,10 @@ class ObibokBot(commands.Bot):
             await asyncio.sleep(30)
             elapsed = 0.0
             try:
-                t0 = asyncio.get_event_loop().time()
+                loop = asyncio.get_running_loop()
+                t0 = loop.time()
                 await asyncio.to_thread(self.engine.audio.ensure_ready)
-                elapsed = asyncio.get_event_loop().time() - t0
+                elapsed = loop.time() - t0
                 if elapsed > 0.5:
                     logger.warning("Health watchdog: ensure_ready took %.2fs (long tick)", elapsed)
             except Exception as exc:
@@ -169,3 +169,4 @@ class ObibokBot(commands.Bot):
 
 
 
+__all__ = ["ObibokBot", "CollectionCog", "FavoritesCog", "PlaybackCog", "ToolsCog"]

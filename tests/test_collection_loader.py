@@ -10,6 +10,7 @@ from src.collection_loader import (
     get_collection,
     load_raw_paths,
     parse_sap_header,
+    resolve_collection_for_saved_track,
 )
 from src.models import COLLECTIONS, FLIP_ORDER
 
@@ -108,3 +109,14 @@ class TestMetadataExtraction:
         assert extract_metadata(str(tmp_path / "track.xm"), "tiny")["NAME"] == "XM title"
         assert extract_metadata(str(tmp_path / "track.s3m"), "tiny")["NAME"] == "S3M title"
         assert extract_metadata(str(tmp_path / "track.it"), "tiny")["NAME"] == "IT title"
+
+
+class TestCollectionResolution:
+    def test_saved_track_prefers_unambiguous_filepath(self):
+        assert resolve_collection_for_saved_track("music/song.sid", "asma", "hvsc") == "hvsc"
+
+    def test_saved_track_prefers_saved_collection_for_ambiguous_module(self):
+        assert resolve_collection_for_saved_track("music/song.mod", "tiny", "hvsc") == "tiny"
+
+    def test_saved_track_falls_back_when_collection_is_unknown(self):
+        assert resolve_collection_for_saved_track("music/song.xyz", "", "asma") == "asma"
