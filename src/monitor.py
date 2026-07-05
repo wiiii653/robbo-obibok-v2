@@ -6,6 +6,8 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 
+from typing import Awaitable, Callable
+
 from .audio import AudioController
 from .models import PlaybackState
 
@@ -79,9 +81,9 @@ class TrackMonitor:
     async def monitor_loop(
         self,
         state: PlaybackState,
-        on_track_end: callable,
-        on_empty: callable | None = None,
-        get_voice_members: callable | None = None,
+        on_track_end: Callable[[PlaybackState], Awaitable[None]],
+        on_empty: Callable[[], Awaitable[None]] | None = None,
+        get_voice_members: Callable[[], int] | None = None,
     ) -> None:
         self._last_output = 0
         self._last_track = ""
@@ -105,9 +107,9 @@ class TrackMonitor:
     async def _tick(
         self,
         state: PlaybackState,
-        on_track_end: callable,
-        on_empty: callable | None,
-        get_voice_members: callable | None,
+        on_track_end: Callable[[PlaybackState], Awaitable[None]],
+        on_empty: Callable[[], Awaitable[None]] | None,
+        get_voice_members: Callable[[], int] | None,
     ) -> None:
         if not state.is_playing:
             return
