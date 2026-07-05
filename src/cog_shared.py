@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 FAVORITE_EMOJI = "⭐"
 
 
-class FakeContext:
+class PlaybackCtx:
     """Minimal context stand-in for auto-start/reconnect flows.
 
     Provides enough of the ``discord.ext.commands.Context`` interface

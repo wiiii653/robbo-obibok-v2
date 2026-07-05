@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .discord_compat import commands, discord
 
-from .cog_shared import FAVORITE_EMOJI, FakeContext, logger
+from .cog_shared import FAVORITE_EMOJI, PlaybackCtx, logger
 from .collection_loader import get_collection, load_raw_paths
 from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
@@ -17,21 +17,6 @@ from .remote import is_remote_track
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
-
-async def _noop_send(*args, **kwargs):
-    return None
-
-
-class _PlaybackCtx:
-    def __init__(self, guild, author, voice_client, send_fn) -> None:
-        self.guild = guild
-        self.author = author
-        self.voice_client = voice_client
-        self._send = send_fn
-
-    async def send(self, *args, **kwargs):
-        return await self._send(*args, **kwargs)
-
 
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
@@ -67,7 +52,7 @@ class PlaybackCog(commands.Cog):
                     continue
 
                 await self._connect_and_play(
-                    _PlaybackCtx(guild, members[0], None, _noop_send),
+                    PlaybackCtx(guild, members[0], None, None),
                     state,
                     channel,
                     failure_prefix="Auto-reconnect failed",
@@ -180,7 +165,7 @@ class PlaybackCog(commands.Cog):
             if not track:
                 self.bot.release_lease(member.guild.id)
                 return
-            ctx = _PlaybackCtx(member.guild, member, None, after.channel.send)
+            ctx = PlaybackCtx(member.guild, member, None, after.channel.send)
             await self._connect_and_play(ctx, state, after.channel, failure_prefix="Auto-start failed")
         except Exception as exc:
             await self.bot.engine.stop(state)
@@ -190,21 +175,31 @@ class PlaybackCog(commands.Cog):
             self.bot.release_lease(member.guild.id)
             logger.warning("Auto-start failed: %s", exc)
 
-    def _get_fallback_ctx(self, member: discord.Member, vc) -> FakeContext:
+    def _get_fallback_ctx(self, member: discord.Member, vc) -> PlaybackCtx:
         """Build a fallback context for stream restart after bot voice reconnect."""
-        from .cog_shared import FakeContext
+        return PlaybackCtx(member.guild, member, vc, None)
 
-        async def noop_send(*args, **kwargs):
+    async def _ensure_voice(self, ctx: commands.Context):
+        """Return user's voice channel, or None after sending an error message."""
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            await ctx.send("Join a voice channel first!")
             return None
+        return ctx.author.voice.channel
 
-        return FakeContext(member.guild, member, vc, noop_send)
+    def _load_collection(self, state: PlaybackState) -> None:
+        """Load track list for the current collection if not already cached."""
+        if not state.tracks:
+            paths = load_raw_paths(state.collection_mode, self.bot.root_dir)
+            if paths:
+                state.tracks = paths
 
     @commands.command(aliases=["pl", "radio", "start"])
     async def play(self, ctx: commands.Context, *, query: str = "") -> None:
         if not ctx.guild:
             return
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            return await ctx.send("Join a voice channel first!")
+        voice_channel = await self._ensure_voice(ctx)
+        if not voice_channel:
+            return
 
         state = self.bot.get_state(ctx.guild.id)
 
@@ -215,9 +210,7 @@ class PlaybackCog(commands.Cog):
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(query, state.collection_mode)])
             await self._connect_and_play(
-                ctx,
-                state,
-                ctx.author.voice.channel,
+                ctx, state, voice_channel,
                 start_message="Starting remote track...",
                 failure_prefix="Failed to play remote track",
             )
@@ -231,7 +224,6 @@ class PlaybackCog(commands.Cog):
             if not self.bot.try_acquire_lease(ctx.guild):
                 owner = self.bot.playback_lease.owner_guild_name or "another server"
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
-            # Pre-check for known-unsupported formats (SAP TYPE D/E)
             from .audio import _is_sap_supported
             supported, reason = _is_sap_supported(path)
             if not supported:
@@ -239,18 +231,13 @@ class PlaybackCog(commands.Cog):
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
             await self._connect_and_play(
-                ctx,
-                state,
-                ctx.author.voice.channel,
+                ctx, state, voice_channel,
                 failure_prefix="Failed to play selection",
             )
             return
 
         if query:
-            if not state.tracks:
-                paths = load_raw_paths(state.collection_mode, self.bot.root_dir)
-                if paths:
-                    state.tracks = paths
+            self._load_collection(state)
             results = self.bot.engine.search(query, state)
             if not results:
                 return await ctx.send(f"No tracks matching `{query}`.")
@@ -262,9 +249,7 @@ class PlaybackCog(commands.Cog):
             state.search_collection_id = state.collection_mode
             self._set_queue(state, [(path, state.collection_mode) for path in results])
             await self._connect_and_play(
-                ctx,
-                state,
-                ctx.author.voice.channel,
+                ctx, state, voice_channel,
                 start_message=f"Starting search result for `{query}`...",
                 failure_prefix="Failed to play search result",
             )
@@ -285,9 +270,7 @@ class PlaybackCog(commands.Cog):
                     await ctx.voice_client.disconnect()
                 return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
             await self._connect_and_play(
-                ctx,
-                state,
-                ctx.author.voice.channel,
+                ctx, state, voice_channel,
                 start_message=f"Starting **{state.collection_mode.upper()}** radio...",
                 failure_prefix="Failed to start playback",
             )
@@ -332,32 +315,7 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         if not state.current_track:
             return await ctx.send("Nothing playing.")
-        collection_id = state.current_collection_id or state.collection_mode
-        col = get_collection(collection_id)
-        meta = self.bot.engine.get_track_metadata(state.current_track, collection_id)
-        title = await self.bot.engine.audio.async_current_song()
-        if not title:
-            title = meta.get("NAME", "") or ""
-        if not title:
-            title = state.current_track.rsplit("/", 1)[-1]
-        author = meta.get("AUTHOR", "Unknown")
-        embed = now_playing_embed(
-            title=title,
-            author=author,
-            collection_name=col.name if col else collection_id,
-            collection_icon=col.icon if col else "?",
-            position=state.position + 1,
-            total=len(state.queue),
-            color=col.color if col else 0x00FF00,
-        )
-        msg = await ctx.send(embed=discord.Embed.from_dict(embed))
-        if msg is None:
-            return
-        self.bot._track_np_message(msg.id, {
-            "filepath": state.current_track,
-            "collection_id": collection_id,
-        })
-        await msg.add_reaction(FAVORITE_EMOJI)
+        await self._send_now_playing(ctx, state, skip_dedup=True)
 
     @commands.command(aliases=["q"])
     async def queue(self, ctx: commands.Context, page: int = 0) -> None:
@@ -527,13 +485,14 @@ class PlaybackCog(commands.Cog):
 
         self.bot._monitor_tasks[guild_id] = asyncio.create_task(run_monitor())
 
-    async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState) -> None:
-        # Dedup: skip if same track+position was sent in the last 5 seconds
-        key = (state.current_track, state.position)
-        now = time.time()
-        if key == (self._last_sent[0], self._last_sent[1]) and now - self._last_sent[2] < 5:
-            return
-        self._last_sent = (state.current_track, state.position, now)
+    async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState, *, skip_dedup: bool = False) -> None:
+        if not skip_dedup:
+            # Dedup: skip if same track+position was sent in the last 5 seconds
+            key = (state.current_track, state.position)
+            now = time.time()
+            if key == (self._last_sent[0], self._last_sent[1]) and now - self._last_sent[2] < 5:
+                return
+            self._last_sent = (state.current_track, state.position, now)
 
         collection_id = state.current_collection_id or state.collection_mode
         col = get_collection(collection_id)
