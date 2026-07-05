@@ -33,16 +33,15 @@ class ToolsCog(commands.Cog):
 
     @commands.command()
     async def ocko(self, ctx: commands.Context) -> None:
-        owl = """
-    ___________
-   /           \\
-  /  O       O  \\
- |    \\     /    |
-  \\    \\___/    /
-   \\           /
-    \\_________/
-        """
-        await ctx.send(f"```\n{owl}\n```")
+        import random
+        owls = [
+            "🦉 **OCKO**\n      ___  \n     / _ \\ \n  _ | |_| |\n / | | __ |\n|  | | |_| |\n \\  \\|  _  |\n  \\   \\_/  |\n   |       |\n   |   |   |\n   |___|___|",
+            "🦉 **OCKO**\n    .---.\n   / .-._)\n .\xb4:  _  `.\n |  (_)  |\n :       ;\n  `.___.\xb4",
+            "🦉 **OCKO**\n  ,___,\n  {o,o}\n  |)__)\n  -\"--\"-\n  m   m",
+            "🦉 **OCKO**\n    ___  \n   (o o) \n  (  V  )\n  --m-m---",
+            "🦉 **OCKO**\n  .------.\n  |O  O  |\n  |  V   |\n  `------\xb4\n    ww ww",
+        ]
+        await ctx.send(f"```\n{random.choice(owls)}\n```")
 
     @commands.command()
     async def help(self, ctx: commands.Context, command: str = "") -> None:
@@ -81,19 +80,19 @@ class ToolsCog(commands.Cog):
                 "`!flip` / `!switch` / `!toggle` / `!fl` — Cycle collection\n"
                 "`!status` / `!mode` / `!collection` — Show current collection\n"
                 "`!search <query>` — Search tracks\n"
-                "`!hvsc` / `!c64` — 🟣 C64 SID (~60 500)\n"
-                "`!asma` — 🟢 Atari SAP (~6 300)\n"
-                "`!mod` / `!modarchive` — 🟠 ModArchive (~175 000)\n"
-                "`!ay` / `!zx` — 🔵 ZX Spectrum AY (~4 500)\n"
-                "`!ym` / `!atarist` — 🎹 Atari ST YM (~7 200)\n"
-                "`!tiny` / `!tm` — 🎵 Demoscene Modules (~550)\n"
-                "`!kgen` / `!keygen` / `!k` — 🔊 Keygen Music (~4 800)"
+                "`!hvsc` / `!c64` — \U0001f7e3 C64 SID (~60 500)\n"
+                "`!asma` — \U0001f7e2 Atari SAP (~6 300)\n"
+                "`!mod` / `!modarchive` — \U0001f7e0 ModArchive (~175 000)\n"
+                "`!ay` / `!zx` — \U0001f535 ZX Spectrum AY (~4 500)\n"
+                "`!ym` / `!atarist` — \U0001f3b9 Atari ST YM (~7 200)\n"
+                "`!tiny` / `!tm` — \U0001f3b5 Demoscene Modules (~550)\n"
+                "`!kgen` / `!keygen` / `!k` — \U0001f50a Keygen Music (~4 800)"
             ),
             inline=False,
         )
 
         embed.add_field(
-            name="❤️ Favorites & Blacklist",
+            name="\u2764\ufe0f Favorites & Blacklist",
             value=(
                 "`!favorites` / `!favs` — Show your favorites\n"
                 "`!favplay` / `!fp` — Play favorites\n"
@@ -108,13 +107,13 @@ class ToolsCog(commands.Cog):
         )
 
         embed.add_field(
-            name="🔧 Tools",
+            name="\U0001f527 Tools",
             value=(
                 "`!stats` — Show bot stats\n"
-                "`!ocko` — 🦉 ASCII owl"
+                "`!ocko` — \U0001f989 ASCII owl"
             ),
             inline=False,
         )
 
-        embed.set_footer(text="Made with 🔥 by the forest spirit — Boruta")
+        embed.set_footer(text="Made with \U0001f525 by the forest spirit — Boruta")
         await ctx.send(embed=embed)
