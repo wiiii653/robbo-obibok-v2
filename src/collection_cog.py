@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .discord_compat import commands, discord
-
 from .collection_loader import flip_collection, get_collection, load_raw_paths
+from .discord_compat import commands, discord
 from .embeds import status_embed
 
 if TYPE_CHECKING:

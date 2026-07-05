@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-
 from typing import Awaitable, Callable
 
 from .audio import AudioController
@@ -187,7 +186,6 @@ class TrackMonitor:
             # GME internal loop), not real track ends. A single-track
             # audacious playlist never auto-advances, so a drop can only
             # mean a format anomaly.
-            now_loop = asyncio.get_running_loop().time()
             if self._last_output >= 10 and elapsed <= 5:
                 # Classic drop signature: track ended, skip immediately
                 logger.info("Track ended (output drop %d->%d)", self._last_output, elapsed)

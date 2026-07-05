@@ -6,9 +6,8 @@ import asyncio
 import logging
 from typing import Any
 
-from .discord_compat import commands, discord
-
 from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
+from .discord_compat import commands, discord
 from .lease import PlaybackLease
 from .models import PlaybackState
 from .monitor import TrackMonitor

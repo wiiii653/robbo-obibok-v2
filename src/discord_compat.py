@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable
 
-
 try:  # pragma: no cover - exercised indirectly when discord.py is installed
     import discord as _discord
     from discord.ext import commands as _commands

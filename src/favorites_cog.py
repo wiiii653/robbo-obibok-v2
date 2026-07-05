@@ -8,10 +8,9 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from .discord_compat import commands, discord
-
 from .cog_shared import FAVORITE_EMOJI
 from .collection_loader import resolve_collection_for_saved_track
+from .discord_compat import commands, discord
 from .favorites import PlaylistLibrary
 
 if TYPE_CHECKING:
