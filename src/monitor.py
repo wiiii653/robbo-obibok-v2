@@ -22,6 +22,8 @@ def is_console_format(filepath: str) -> bool:
 
 
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
+    if is_console_format and 10 < song_len < 36000:
+        return min(song_len * 2 + 10, CONSOLE_TIMEOUT)
     if is_console_format:
         return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
