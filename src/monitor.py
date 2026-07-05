@@ -23,7 +23,7 @@ def is_console_format(filepath: str) -> bool:
 
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
     if is_console_format and 10 < song_len < 36000:
-        return min(song_len * 2 + 10, CONSOLE_TIMEOUT)
+        return max(song_len + 30, 90)
     if is_console_format:
         return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
@@ -75,6 +75,7 @@ class TrackMonitor:
     _not_playing_since: float | None = field(default=None, init=False, repr=False)
     _empty_since: float | None = field(default=None, init=False, repr=False)
     _drop_confirmed_since: float | None = field(default=None, init=False, repr=False)
+    _track_started_at: float = field(default=0.0, init=False, repr=False)
 
     async def monitor_loop(
         self,
@@ -89,6 +90,7 @@ class TrackMonitor:
         self._not_playing_since = None
         self._empty_since = None
         self._drop_confirmed_since = None
+        self._track_started_at = 0.0
 
         while True:
             await asyncio.sleep(2)
@@ -156,6 +158,7 @@ class TrackMonitor:
             self._last_output = 0
             self._cached_song_length = -1
             self._drop_confirmed_since = None
+            self._track_started_at = asyncio.get_running_loop().time()
 
         elapsed = await self.audio.async_output_length()
         if elapsed < 0:
@@ -198,12 +201,23 @@ class TrackMonitor:
 
         self._last_output = elapsed
 
-        # Cache song_length (v1 compat) — fetch once per track, never mid-track
+        # Cache song_length once per track
         if self._cached_song_length < 0:
             self._cached_song_length = await self.audio.async_song_length()
         total = self._cached_song_length
         timeout = compute_timeout(total, is_console_format=is_console)
-        if elapsed >= timeout and elapsed < 10000:
+
+        # Console formats (GME) loop internally — output_length resets on each
+        # loop and never reaches the timeout. Use wall-clock from track start
+        # to reliably detect when a track has played long enough.
+        if is_console and self._track_started_at > 0:
+            wall_elapsed = asyncio.get_running_loop().time() - self._track_started_at
+            if wall_elapsed >= timeout:
+                logger.info("Track timeout (wall %ds >= %ds)", int(wall_elapsed), timeout)
+                state.is_playing = False
+                await on_track_end(state)
+                return
+        elif elapsed >= timeout and elapsed < 10000:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
             state.is_playing = False
             await on_track_end(state)
