@@ -54,7 +54,7 @@ class PlaybackCog(commands.Cog):
                     continue
 
                 await self._connect_and_play(
-                    PlaybackCtx(guild, members[0], None, None),
+                    PlaybackCtx(guild, members[0], None, channel.send),
                     state,
                     channel,
                     failure_prefix="Auto-reconnect failed",
