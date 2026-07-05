@@ -82,6 +82,7 @@ class ToolsCog(commands.Cog):
                 "`!play` / `!pl` — Start shuffled radio\n"
                 "`!play <query>` — Search and play\n"
                 "`!play <number>` — Play from search results\n"
+                "`!play <url>` — Play remote track (direct file link)\n"
                 "`!stop` / `!st` — Stop and disconnect\n"
                 "`!skip` / `!next` / `!nt` — Skip to next\n"
                 "`!jump <n>` — Jump to track N\n"
