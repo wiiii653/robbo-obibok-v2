@@ -210,6 +210,11 @@ class PlaybackCog(commands.Cog):
             if not self.bot.try_acquire_lease(ctx.guild):
                 owner = self.bot.playback_lease.owner_guild_name or "another server"
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
+            # Pre-check for known-unsupported formats (SAP TYPE D/E)
+            from .audio import _is_sap_supported
+            supported, reason = _is_sap_supported(path)
+            if not supported:
+                return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
             try:
