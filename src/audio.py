@@ -91,10 +91,49 @@ def kill_player() -> None:
     subprocess.run(["pkill", "-x", "audacious"], capture_output=True)
 
 
+UNSUPPORTED_SAP_TYPES = {"D", "E"}
+
+
+def _get_sap_type(filepath: str) -> str | None:
+    """Read the first ~5 lines of an SAP file and return its TYPE value."""
+    try:
+        with open(filepath, "r", encoding="ascii", errors="replace") as f:
+            for _ in range(10):
+                line = f.readline()
+                if not line:
+                    break
+                stripped = line.strip().rstrip("\r")
+                if stripped.startswith("TYPE "):
+                    return stripped[5:].strip()
+    except OSError:
+        pass
+    return None
+
+
+def _is_sap_supported(filepath: str) -> tuple[bool, str]:
+    """Check if an SAP file has a TYPE that GME's Console plugin can play.
+
+    Returns (supported: bool, reason: str).
+    """
+    if not filepath.lower().endswith(".sap"):
+        return True, ""
+    sap_type = _get_sap_type(filepath)
+    if sap_type is None:
+        return True, ""
+    if sap_type in UNSUPPORTED_SAP_TYPES:
+        return False, f"SAP TYPE {sap_type} not supported by Audacious Console plugin (GME 0.6.4)"
+    return True, ""
+
+
 def play_file(filepath: str, sink_name: str) -> bool:
     if not _audacious_ready:
         start_player(sink_name)
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
+    # Fast-fail on known-unsupported formats (e.g. SAP TYPE D)
+    supported, reason = _is_sap_supported(filepath)
+    if not supported:
+        logger.warning("play_file: REFUSED — %s, filepath=%s — skipping", reason, filepath)
+        return False
     _audtool_call("playlist-clear")
     time.sleep(0.3)  # wait for Audacious to finish clearing the playlist
     add_ok = _audtool_call("playlist-addurl", filepath)
