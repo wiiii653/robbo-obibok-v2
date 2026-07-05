@@ -100,6 +100,10 @@ def download_modarchive_module(url: str, *, root_dir: str) -> str:
     parsed = urlparse(url)
     stem = Path(unquote(parsed.path)).stem or mod_id or "module"
     suffix = Path(unquote(parsed.path)).suffix or ".mod"
+    # ModArchive download URLs end in .php even though the content
+    # is always a tracker module (MOD/XM/S3M/IT) — fix the extension
+    if suffix.lower() == ".php":
+        suffix = ".mod"
     digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
     output_path = cache_dir / f"{_sanitize_stem(stem)}-{digest}{suffix}"
     if _valid_cached_file(output_path):
