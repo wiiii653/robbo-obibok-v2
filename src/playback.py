@@ -25,7 +25,9 @@ from .queue import (
 from .remote import (
     download_modarchive_module,
     download_remote_track,
+    download_youtube_track,
     is_remote_track,
+    is_youtube_url,
     remote_cache_path,
     uses_module_cache,
 )
@@ -326,6 +328,8 @@ class PlaybackEngine:
         return Path(self.root_dir) / self.archive_root / col.archive_path / track
 
     async def _download_remote_track(self, state: PlaybackState, track: str) -> str | None:
+        if is_youtube_url(track):
+            return await asyncio.to_thread(download_youtube_track, track, self.root_dir)
         if uses_module_cache(track):
             return download_modarchive_module(track, root_dir=self.root_dir)
         output_path = remote_cache_path(self.root_dir, track)
