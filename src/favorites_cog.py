@@ -188,7 +188,7 @@ class FavoritesCog(commands.Cog):
         else:
             await ctx.send("Nothing to blacklist.")
 
-    @commands.command(aliases=["blks", "blklist"])
+    @commands.command(aliases=["blklist"])
     async def blks(self, ctx: commands.Context) -> None:
         tracks = self.bot.engine.blacklist.get_tracks(ctx.author.id)
         if not tracks:
