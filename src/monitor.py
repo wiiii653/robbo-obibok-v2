@@ -69,6 +69,7 @@ class TrackMonitor:
     empty_timeout: int = 0
     _last_output: int = field(default=0, init=False, repr=False)
     _last_track: str = field(default="", init=False, repr=False)
+    _cached_song_length: int = field(default=-1, init=False, repr=False)
     _not_playing_since: float | None = field(default=None, init=False, repr=False)
     _empty_since: float | None = field(default=None, init=False, repr=False)
     _drop_confirmed_since: float | None = field(default=None, init=False, repr=False)
@@ -82,6 +83,7 @@ class TrackMonitor:
     ) -> None:
         self._last_output = 0
         self._last_track = ""
+        self._cached_song_length = -1
         self._not_playing_since = None
         self._empty_since = None
         self._drop_confirmed_since = None
@@ -150,6 +152,7 @@ class TrackMonitor:
         if track != self._last_track:
             self._last_track = track
             self._last_output = 0
+            self._cached_song_length = -1
             self._drop_confirmed_since = None
 
         elapsed = await self.audio.async_output_length()
@@ -164,8 +167,13 @@ class TrackMonitor:
                 # rely on is_playing() + timeout instead
                 self._last_output = elapsed
                 return
+            # Non-console formats: same treatment — output_length resets
+            # are format quirks (MOD pattern loops, plugin glitches), not
+            # real track ends. A single-track audacious playlist never
+            # auto-advances, so a drop can only mean a format anomaly.
             now_loop = asyncio.get_running_loop().time()
             if self._last_output > 10 and elapsed < 5:
+                # Classic drop signature: waited long enough?
                 drop_confirmed, self._drop_confirmed_since = should_confirm_output_drop(
                     self._last_output,
                     elapsed,
@@ -180,17 +188,20 @@ class TrackMonitor:
                     state.is_playing = False
                     await on_track_end(state)
                 return
-            logger.info("Track ended (output reset %d->%d)", self._last_output, elapsed)
-            state.is_playing = False
-            await on_track_end(state)
+            # Minor drop that doesn't match the confirmation profile — ignore
+            logger.debug("Output length dropped %d->%d (ignored)", self._last_output, elapsed)
+            self._last_output = elapsed
             return
         self._drop_confirmed_since = None
 
         self._last_output = elapsed
 
-        total = await self.audio.async_song_length()
+        # Cache song_length (v1 compat) — fetch once per track, never mid-track
+        if self._cached_song_length < 0:
+            self._cached_song_length = await self.audio.async_song_length()
+        total = self._cached_song_length
         timeout = compute_timeout(total, is_console_format=is_console)
-        if elapsed >= timeout:
+        if elapsed >= timeout and elapsed < 10000:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
             state.is_playing = False
             await on_track_end(state)
