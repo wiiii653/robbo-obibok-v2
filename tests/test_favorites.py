@@ -29,9 +29,9 @@ class TestFavorites:
 
     def test_count(self, tmp_path):
         favs = Favorites(str(tmp_path))
-        assert favs.count(1) == 0
+        assert len(favs.get_tracks(1)) == 0
         favs.toggle(1, "a.sap")
-        assert favs.count(1) == 1
+        assert len(favs.get_tracks(1)) == 1
 
     def test_has_track(self, tmp_path):
         favs = Favorites(str(tmp_path))
@@ -44,7 +44,7 @@ class TestFavorites:
         favs.toggle(1, "test.sap", "Test")
         favs2 = Favorites(str(tmp_path))
         assert favs2.has_track(1, "test.sap") is True
-        assert favs2.count(1) == 1
+        assert len(favs2.get_tracks(1)) == 1
 
     def test_ignores_malformed_entries(self, tmp_path):
         path = tmp_path / "favorites.json"
@@ -58,8 +58,8 @@ class TestFavorites:
         favs = Favorites(str(tmp_path))
         favs.toggle(1, "a.sap")
         favs.toggle(2, "b.sap")
-        assert favs.count(1) == 1
-        assert favs.count(2) == 1
+        assert len(favs.get_tracks(1)) == 1
+        assert len(favs.get_tracks(2)) == 1
         assert favs.has_track(1, "b.sap") is False
 
     def test_same_path_dedup_by_filepath(self, tmp_path):
@@ -67,11 +67,11 @@ class TestFavorites:
         assert favs.toggle(1, "song.mod", collection_id="tiny") is True
         # Same filepath from different collection → already favorited, removes it
         assert favs.toggle(1, "song.mod", collection_id="kgen") is False
-        assert favs.count(1) == 0
+        assert len(favs.get_tracks(1)) == 0
         # Add again — clean slate
         assert favs.add(1, "song.mod", collection_id="tiny") is True
         assert favs.add(1, "song.mod", collection_id="kgen") is False  # duplicate, blocked
-        assert favs.count(1) == 1
+        assert len(favs.get_tracks(1)) == 1
         assert favs.has_track(1, "song.mod") is True
 
 
@@ -94,16 +94,6 @@ class TestPlaylistLibrary:
         assert len(playlists) == 2
         assert playlists[0]["tracks"] == 1
         assert playlists[1]["tracks"] == 2
-
-    def test_delete(self, tmp_path):
-        lib = PlaylistLibrary(str(tmp_path))
-        lib.save("To Delete", [], 1, "User")
-        assert lib.delete("To Delete") is True
-        assert lib.load("To Delete") is None
-
-    def test_delete_nonexistent(self, tmp_path):
-        lib = PlaylistLibrary(str(tmp_path))
-        assert lib.delete("Nope") is False
 
     def test_load_nonexistent(self, tmp_path):
         lib = PlaylistLibrary(str(tmp_path))

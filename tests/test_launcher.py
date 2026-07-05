@@ -72,3 +72,19 @@ class TestSetupLogging:
         except SystemExit:
             pass
         mock_exit.assert_called_once_with(1)
+
+    @patch("src.launcher.sys.exit")
+    @patch("src.launcher.check_audacious_version")
+    @patch("src.launcher.load_config")
+    def test_main_rejects_unsupported_audacious(self, mock_config, mock_check, mock_exit):
+        config = AppConfig()
+        config.token = "test-token"
+        mock_config.return_value = config
+        mock_check.side_effect = RuntimeError("Unsupported Audacious version 4.6.2; expected 4.6.1")
+        mock_exit.side_effect = SystemExit
+        from src.launcher import main
+        try:
+            main()
+        except SystemExit:
+            pass
+        mock_exit.assert_called_once_with(1)

@@ -11,10 +11,6 @@ class PlaybackLease:
     _owner_guild_name: str | None = None
 
     @property
-    def is_held(self) -> bool:
-        return self._owner_guild_id is not None
-
-    @property
     def owner_guild_id(self) -> int | None:
         return self._owner_guild_id
 

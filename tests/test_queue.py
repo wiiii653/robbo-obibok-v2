@@ -180,12 +180,6 @@ class TestBlacklist:
         bl.add(1, "b.sap")
         assert bl.get_tracks(1) == ["a.sap", "b.sap"]
 
-    def test_filter_queue(self, tmp_path):
-        bl = Blacklist(str(tmp_path))
-        bl.add(1, "b.sap")
-        queue = ["a.sap", "b.sap", "c.sap"]
-        assert bl.filter_queue(queue, 1) == ["a.sap", "c.sap"]
-
     def test_persistence(self, tmp_path):
         bl = Blacklist(str(tmp_path))
         bl.add(1, "bad.sap")

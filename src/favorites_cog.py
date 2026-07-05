@@ -8,20 +8,61 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-import discord
-from discord.ext import commands
+from .discord_compat import commands, discord
 
 from .cog_shared import FAVORITE_EMOJI
-from .collection_loader import resolve_collection_for_filepath
+from .collection_loader import resolve_collection_for_saved_track
 from .favorites import PlaylistLibrary
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
 
-
 class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
+
+    def _build_queued_tracks(
+        self,
+        tracks: list[dict],
+        fallback_collection_id: str,
+    ) -> list[tuple[str, str]]:
+        queued: list[tuple[str, str]] = []
+        for track in tracks:
+            filepath = track["filepath"]
+            cid = resolve_collection_for_saved_track(
+                filepath,
+                track.get("collection_id", ""),
+                fallback_collection_id,
+            )
+            queued.append((filepath, cid))
+        return queued
+
+    async def _play_queued_tracks(
+        self,
+        ctx: commands.Context,
+        state,
+        queued: list[tuple[str, str]],
+        *,
+        success_message: str,
+        failure_prefix: str,
+    ) -> None:
+        playback_cog = self.bot.get_cog("PlaybackCog")
+        if playback_cog:
+            playback_cog._set_queue(state, queued, shuffle=True)
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+            await ctx.author.voice.channel.connect()
+            state.voice_channel_id = ctx.author.voice.channel.id
+            await ctx.send(success_message)
+            if playback_cog:
+                await playback_cog._play_and_monitor(ctx, state)
+        except Exception as exc:
+            if playback_cog:
+                await playback_cog._finish_playback(ctx, state, f"{failure_prefix}: {exc}")
+            else:
+                self.bot.release_lease(ctx.guild.id)
+                await ctx.send(f"{failure_prefix}: {exc}")
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if str(payload.emoji) != FAVORITE_EMOJI:
@@ -31,14 +72,12 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        # Resolve collection from filepath (only for unambiguous extensions)
         filepath = msg_data["filepath"]
-        ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
-        if ext in ("sid", "sap", "ay", "ym"):
-            resolved_col = resolve_collection_for_filepath(filepath)
-            collection_id = resolved_col or msg_data["collection_id"]
-        else:
-            collection_id = msg_data["collection_id"] or resolve_collection_for_filepath(filepath) or ""
+        collection_id = resolve_collection_for_saved_track(
+            filepath,
+            msg_data["collection_id"],
+            "",
+        )
         meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
         raw_title = meta.get("NAME", "") or ""
         # Strip non-printable chars from metadata (SID/SAP headers often contain binary prefixes)
@@ -72,7 +111,6 @@ class FavoritesCog(commands.Cog):
         self.bot.engine.favorites.remove(
             payload.user_id,
             msg_data["filepath"],
-            msg_data["collection_id"],
         )
 
     @commands.command(aliases=["favs"])
@@ -144,39 +182,15 @@ class FavoritesCog(commands.Cog):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        queued = []
-        for track in filtered:
-            filepath = track["filepath"]
-            saved_cid = track.get("collection_id")
-            ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
-            # Unambiguous extensions: sid/sap/ay/ym — resolve from filepath
-            # Ambiguous (mod/xm/s3m/it): trust saved collection_id
-            if ext in ("sid", "sap", "ay", "ym"):
-                cid = resolve_collection_for_filepath(filepath) or saved_cid or state.collection_mode
-            else:
-                cid = saved_cid or resolve_collection_for_filepath(filepath) or state.collection_mode
-            queued.append((filepath, cid))
-        playback_cog = self.bot.get_cog("PlaybackCog")
-        if playback_cog:
-            playback_cog._set_queue(state, queued, shuffle=True)
         state.is_looping = True
-        try:
-            if ctx.voice_client:
-                await ctx.voice_client.disconnect()
-                await asyncio.sleep(0.5)  # let Discord clean up old session
-            await ctx.author.voice.channel.connect()
-            state.voice_channel_id = ctx.author.voice.channel.id
-            await ctx.send(f"🎵 **Playing {len(filtered)} favorites!**")
-            cog = self.bot.get_cog("PlaybackCog")
-            if cog:
-                await cog._play_and_monitor(ctx, state)
-        except Exception as exc:
-            cog = self.bot.get_cog("PlaybackCog")
-            if cog:
-                await cog._finish_playback(ctx, state, f"Failed to play favorites: {exc}")
-            else:
-                self.bot.release_lease(ctx.guild.id)
-                await ctx.send(f"Failed to play favorites: {exc}")
+        queued = self._build_queued_tracks(filtered, state.collection_mode)
+        await self._play_queued_tracks(
+            ctx,
+            state,
+            queued,
+            success_message=f"🎵 **Playing {len(filtered)} favorites!**",
+            failure_prefix="Failed to play favorites",
+        )
 
     @commands.command()
     async def blk(self, ctx: commands.Context) -> None:
@@ -239,36 +253,14 @@ class FavoritesCog(commands.Cog):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         state = self.bot.get_state(ctx.guild.id)
-        queued = []
-        for track in playlist.get("tracks", []):
-            filepath = track["filepath"]
-            saved_cid = track.get("collection_id")
-            ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
-            if ext in ("sid", "sap", "ay", "ym"):
-                cid = resolve_collection_for_filepath(filepath) or saved_cid or state.collection_mode
-            else:
-                cid = saved_cid or resolve_collection_for_filepath(filepath) or state.collection_mode
-            queued.append((filepath, cid))
-        playback_cog = self.bot.get_cog("PlaybackCog")
-        if playback_cog:
-            playback_cog._set_queue(state, queued, shuffle=True)
-        try:
-            if ctx.voice_client:
-                await ctx.voice_client.disconnect()
-                await asyncio.sleep(0.5)  # let Discord clean up old session
-            await ctx.author.voice.channel.connect()
-            state.voice_channel_id = ctx.author.voice.channel.id
-            await ctx.send(f"🎵 **Playing playlist `{playlist.get('name', name)}`!**")
-            cog = self.bot.get_cog("PlaybackCog")
-            if cog:
-                await cog._play_and_monitor(ctx, state)
-        except Exception as exc:
-            cog = self.bot.get_cog("PlaybackCog")
-            if cog:
-                await cog._finish_playback(ctx, state, f"Failed to load playlist: {exc}")
-            else:
-                self.bot.release_lease(ctx.guild.id)
-                await ctx.send(f"Failed to load playlist: {exc}")
+        queued = self._build_queued_tracks(playlist.get("tracks", []), state.collection_mode)
+        await self._play_queued_tracks(
+            ctx,
+            state,
+            queued,
+            success_message=f"🎵 **Playing playlist `{playlist.get('name', name)}`!**",
+            failure_prefix="Failed to load playlist",
+        )
 
     @commands.command(aliases=["plist"])
     async def playlists(self, ctx: commands.Context) -> None:

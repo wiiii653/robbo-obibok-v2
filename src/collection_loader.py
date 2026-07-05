@@ -9,6 +9,7 @@ from .models import COLLECTIONS, FLIP_ORDER, Collection
 from .persistence import load_tracks_from_cache
 
 SAP_LINE_RE = re.compile(rb"^([A-Z]+)\s+(.+)")
+UNAMBIGUOUS_TRACK_EXTENSIONS = {"sid", "sap", "ay", "ym"}
 
 
 def load_raw_paths(collection_id: str, root_dir: str = ".") -> list[str] | None:
@@ -156,6 +157,17 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
             return col_id
 
     return None
+
+
+def resolve_collection_for_saved_track(
+    filepath: str,
+    saved_collection_id: str = "",
+    fallback_collection_id: str = "",
+) -> str:
+    ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+    if ext in UNAMBIGUOUS_TRACK_EXTENSIONS:
+        return resolve_collection_for_filepath(filepath) or saved_collection_id or fallback_collection_id
+    return saved_collection_id or resolve_collection_for_filepath(filepath) or fallback_collection_id
 
 
 def extract_metadata(filepath: str, collection_id: str) -> dict[str, str]:

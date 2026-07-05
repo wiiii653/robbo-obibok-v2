@@ -106,6 +106,8 @@ Local archives are served from disk; remote URLs are cached before playback.
 
 Supported Python versions: **3.11+**.
 
+Audacious requirement: this bot is validated against **Audacious 4.6.1** and checks that version at startup.
+
 ### Ubuntu / Debian
 
 ```bash
@@ -273,6 +275,7 @@ To adjust: edit `~/.config/audacious/config` and restart the bot.
 |---------|-----------|
 | `RuntimeError: PyNaCl library needed` | `pip install pynacl` |
 | Bot doesn't respond to commands | Enable **Message Content Intent** in Discord Developer Portal |
+| `Unsupported Audacious version ...` | Install Audacious **4.6.1** and restart the bot |
 | Bot joins VC but no sound | Audacious not running — restart bot, or run `audacious --headless` manually |
 | `!play` says "Join a voice channel" | You must be in a voice channel when issuing the command |
 | Bot auto-disconnects too fast | Increase `auto.empty_timeout` in config |

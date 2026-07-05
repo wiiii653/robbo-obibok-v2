@@ -83,6 +83,14 @@ class Favorites:
     def _save(self) -> None:
         save_json(self._filepath, self._data)
 
+    def _track_index(self, user_id: int, filepath: str) -> int | None:
+        self._ensure_loaded()
+        tracks = self._data.get(str(user_id), [])
+        for index, track in enumerate(tracks):
+            if track.get("filepath") == filepath:
+                return index
+        return None
+
     def toggle(
         self,
         user_id: int,
@@ -91,8 +99,8 @@ class Favorites:
         collection_id: str = "",
         author: str = "",
     ) -> bool:
-        if self.has_track(user_id, filepath, collection_id):
-            self.remove(user_id, filepath, collection_id)
+        if self._track_index(user_id, filepath) is not None:
+            self.remove(user_id, filepath)
             return False
         self.add(user_id, filepath, title, collection_id, author)
         return True
@@ -105,10 +113,10 @@ class Favorites:
         collection_id: str = "",
         author: str = "",
     ) -> bool:
-        self._ensure_loaded()
+        index = self._track_index(user_id, filepath)
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
-        if self.has_track(user_id, filepath, collection_id):
+        if index is not None:
             return False
         tracks.append({
             "filepath": filepath,
@@ -124,22 +132,12 @@ class Favorites:
         self,
         user_id: int,
         filepath: str,
-        collection_id: str = "",
-        author: str = "",
     ) -> bool:
-        self._ensure_loaded()
-        tracks = self._data.get(str(user_id), [])
-        existing = next(
-            (
-                track
-                for track in tracks
-                if track.get("filepath") == filepath
-            ),
-            None,
-        )
-        if existing is None:
+        index = self._track_index(user_id, filepath)
+        if index is None:
             return False
-        tracks.remove(existing)
+        tracks = self._data.get(str(user_id), [])
+        del tracks[index]
         self._save()
         return True
 
@@ -147,17 +145,8 @@ class Favorites:
         self._ensure_loaded()
         return list(self._data.get(str(user_id), []))
 
-    def has_track(self, user_id: int, filepath: str, collection_id: str = "") -> bool:
-        self._ensure_loaded()
-        tracks = self._data.get(str(user_id), [])
-        return any(
-            track.get("filepath") == filepath
-            for track in tracks
-        )
-
-    def count(self, user_id: int) -> int:
-        self._ensure_loaded()
-        return len(self._data.get(str(user_id), []))
+    def has_track(self, user_id: int, filepath: str) -> bool:
+        return self._track_index(user_id, filepath) is not None
 
 
 class PlaylistLibrary:
@@ -212,11 +201,3 @@ class PlaylistLibrary:
                 "created": normalized.get("created", 0),
             })
         return playlists
-
-    def delete(self, name: str) -> bool:
-        safe = self._safe_name(name)
-        filepath = self._dir / f"{safe}.json"
-        if filepath.exists():
-            filepath.unlink()
-            return True
-        return False

@@ -25,6 +25,8 @@ FORMAT_VOLUMES: dict[str, int] = {
 }
 
 _audacious_ready = False
+SUPPORTED_AUDACIOUS_VERSION = "4.6.1"
+AUDACIOUS_VERSION_RE = re.compile(r"\b(\d+\.\d+\.\d+)\b")
 
 
 def setup_sink(sink_name: str) -> bool:
@@ -53,6 +55,37 @@ def setup_sink(sink_name: str) -> bool:
     return created.returncode == 0
 
 
+def get_audacious_version() -> str | None:
+    try:
+        result = subprocess.run(
+            ["audtool", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    match = AUDACIOUS_VERSION_RE.search(result.stdout)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def check_audacious_version(required_version: str = SUPPORTED_AUDACIOUS_VERSION) -> str | None:
+    version = get_audacious_version()
+    if version is None:
+        logger.warning("Could not determine Audacious version")
+        return None
+    if version != required_version:
+        raise RuntimeError(
+            f"Unsupported Audacious version {version}; expected {required_version}"
+        )
+    logger.info("Audacious version verified: %s", version)
+    return version
+
+
 def start_player(sink_name: str = "robbo_bot") -> bool:
     global _audacious_ready
     if _audacious_ready:
@@ -68,7 +101,9 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
     )
     try:
         for _ in range(20):
-            if _audtool_call("version"):
+            version = get_audacious_version()
+            if version:
+                logger.info("Audacious version detected: %s", version)
                 _audacious_ready = True
                 return True
             time.sleep(1)
@@ -256,7 +291,7 @@ def _is_audacious_alive() -> bool:
     if result.returncode != 0:
         logger.warning("Health watchdog: pgrep audacious returned %d", result.returncode)
         return False
-    alive = bool(_audtool_call("version"))
+    alive = get_audacious_version() is not None
     if not alive:
         logger.warning("Health watchdog: audtool version failed (process exists but D-Bus unresponsive)")
     return alive

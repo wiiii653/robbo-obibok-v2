@@ -40,19 +40,45 @@ class TestPlaybackEngine:
     @pytest.mark.asyncio
     async def test_stop(self, tmp_path):
         engine = self._make_engine(tmp_path)
-        state = PlaybackState(is_playing=True)
+        state = PlaybackState(
+            is_playing=True,
+            current_track="song.sap",
+            current_collection_id="asma",
+            voice_channel_id=123,
+            search_results=["old.sap"],
+            search_collection_id="asma",
+        )
         await engine.stop(state)
         assert state.is_playing is False
+        assert state.current_track == ""
+        assert state.current_collection_id == ""
+        assert state.voice_channel_id is None
+        assert state.search_results == []
+        assert state.search_collection_id == ""
         engine.audio.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_clear(self, tmp_path):
         engine = self._make_engine(tmp_path)
-        state = PlaybackState(queue=["a.sap", "b.sap"], position=1, is_playing=True)
+        state = PlaybackState(
+            queue=["a.sap", "b.sap"],
+            position=1,
+            is_playing=True,
+            current_track="song.sap",
+            current_collection_id="asma",
+            voice_channel_id=123,
+            search_results=["old.sap"],
+            search_collection_id="asma",
+        )
         await engine.clear(state)
         assert state.queue == []
         assert state.position == 0
         assert state.is_playing is False
+        assert state.current_track == ""
+        assert state.current_collection_id == ""
+        assert state.voice_channel_id is None
+        assert state.search_results == []
+        assert state.search_collection_id == ""
 
     def test_search(self, tmp_path):
         engine = self._make_engine(tmp_path)
@@ -139,11 +165,35 @@ class TestPlaybackEngine:
             raise AssertionError("shuffle must remain disabled")
 
         monkeypatch.setattr("random.shuffle", unexpected_shuffle)
-        state = PlaybackState()
+        state = PlaybackState(
+            current_track="stale.sap",
+            current_collection_id="tiny",
+            voice_channel_id=999,
+            search_results=["stale.sap"],
+            search_collection_id="tiny",
+        )
 
         result = asyncio.run(engine.start_radio(state))
         assert result == "first.sap"
         assert state.queue == ["first.sap", "second.sap"]
+        assert state.current_track == ""
+        assert state.current_collection_id == ""
+        assert state.voice_channel_id is None
+        assert state.search_results == []
+        assert state.search_collection_id == ""
+
+    @pytest.mark.asyncio
+    async def test_play_track_failure_resets_state(self, tmp_path):
+        engine = self._make_engine(tmp_path)
+        engine.audio.play.return_value = False
+        state = PlaybackState(queue=["a.sap"], position=0, is_playing=True, current_track="old.sap")
+
+        result = await engine.play_track(state)
+
+        assert result is None
+        assert state.is_playing is False
+        assert state.current_track == ""
+        assert state.current_collection_id == ""
 
 
 class TestTrackEndBehavior:
