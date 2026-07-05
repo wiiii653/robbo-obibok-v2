@@ -22,8 +22,6 @@ if TYPE_CHECKING:
 class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
-        self._processing_favs: set[int] = set()
-
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if str(payload.emoji) != FAVORITE_EMOJI:
@@ -80,56 +78,46 @@ class FavoritesCog(commands.Cog):
     @commands.command(aliases=["favs"])
     async def favorites(self, ctx: commands.Context) -> None:
         logger = logging.getLogger(__name__)
-        # Dedup: skip if already processing !favs for this user (Discord may deliver the command twice)
-        uid = ctx.author.id
-        if uid in self._processing_favs:
-            logger.warning("!favs dedup: already processing for %s, skipping duplicate", uid)
-            return
-        self._processing_favs.add(uid)
-        try:
-            tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
-            logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
-            if not tracks:
-                return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
-            lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
-            downloads_seen = 0
-            bad_titles_seen = 0
-            for i, t in enumerate(tracks, 1):
-                name = t.get("title", "")
-                # Strip non-printable chars (binary metadata prefixes: SID/SAP headers, etc.)
-                if name:
-                    name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
-                # Fix old "downloads" titles from ModArchive URLs
-                if not name or name == "downloads":
-                    filepath = t["filepath"]
-                    bad_titles_seen += 1
-                    if "downloads.php?moduleid=" in filepath:
-                        mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
-                        name = f"ModArchive #{mod_id}"
-                    else:
-                        # Try to fetch real metadata
-                        meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
-                        name = meta.get("NAME", "")
-                        # Also strip nulls from fetched metadata
-                        if name:
-                            name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
-                if not name:
-                    fallback = t["filepath"].rsplit("/", 1)[-1]
-                    # Remove extension for cleaner display
-                    fallback = fallback.rsplit(".", 1)[0].replace("_", " ")
-                    name = fallback
-                author_s = f" — {t['author']}" if t.get("author") else ""
-                lines.append(f"`{i}.` {name}{author_s}")
-            if bad_titles_seen:
-                logger.info("!favs: repaired %d bad titles", bad_titles_seen)
-            first = True
-            for chunk_start in range(0, len(lines), 15):
-                if not first:
-                    await asyncio.sleep(1.5)
-                await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
-                first = False
-        finally:
-            self._processing_favs.discard(uid)
+        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+        logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
+        if not tracks:
+            return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
+        lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
+        bad_titles_seen = 0
+        for i, t in enumerate(tracks, 1):
+            name = t.get("title", "")
+            # Strip non-printable chars (binary metadata prefixes: SID/SAP headers, etc.)
+            if name:
+                name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
+            # Fix old "downloads" titles from ModArchive URLs
+            if not name or name == "downloads":
+                filepath = t["filepath"]
+                bad_titles_seen += 1
+                if "downloads.php?moduleid=" in filepath:
+                    mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
+                    name = f"ModArchive #{mod_id}"
+                else:
+                    # Try to fetch real metadata
+                    meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
+                    name = meta.get("NAME", "")
+                    # Also strip nulls from fetched metadata
+                    if name:
+                        name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
+            if not name:
+                fallback = t["filepath"].rsplit("/", 1)[-1]
+                # Remove extension for cleaner display
+                fallback = fallback.rsplit(".", 1)[0].replace("_", " ")
+                name = fallback
+            author_s = f" — {t['author']}" if t.get("author") else ""
+            lines.append(f"`{i}.` {name}{author_s}")
+        if bad_titles_seen:
+            logger.info("!favs: repaired %d bad titles", bad_titles_seen)
+        first = True
+        for chunk_start in range(0, len(lines), 15):
+            if not first:
+                await asyncio.sleep(1.5)
+            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
+            first = False
 
     @commands.command(aliases=["fp"])
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
