@@ -105,7 +105,8 @@ class PlaybackCog(commands.Cog):
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
         # Handle bot's own voice reconnect — restart stream if we were playing
-        if member.bot and member.id == self.bot.user.id:
+        if self.bot.user and member.bot and member.id == self.bot.user.id:
+            logger.debug("Bot voice state: %s → %s", before.channel, after.channel)
             if after.channel is not None and before.channel is None:
                 # Bot reconnected to voice — restart stream and monitor
                 guild_id = member.guild.id
