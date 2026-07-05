@@ -24,9 +24,29 @@ def is_console_format(filepath: str) -> bool:
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
     if is_console_format:
         return CONSOLE_TIMEOUT
+    if song_len <= 0:
+        return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
         return song_len + 15
     return DEFAULT_TIMEOUT
+
+
+def should_confirm_output_drop(
+    output: int,
+    last_output: int,
+    confirmed_since: float | None,
+    now: float,
+    grace_seconds: int,
+    *,
+    is_console_format: bool = False,
+) -> tuple[bool, float | None]:
+    if is_console_format:
+        return False, None
+    if confirmed_since is None:
+        return False, now
+    if now - confirmed_since >= grace_seconds:
+        return True, None
+    return False, confirmed_since
 
 
 

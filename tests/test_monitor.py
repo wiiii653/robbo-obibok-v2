@@ -100,7 +100,7 @@ class TestTrackMonitor:
         await monitor._tick(state, on_end, None, None)
         assert monitor._not_playing_since is not None
 
-        monitor._not_playing_since = time.monotonic() - 5
+        monitor._not_playing_since = asyncio.get_running_loop().time() - 10
         await monitor._tick(state, on_end, None, None)
         assert len(ended) >= 1
 
