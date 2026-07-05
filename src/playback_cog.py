@@ -113,7 +113,9 @@ class PlaybackCog(commands.Cog):
         try:
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
-            ctx.voice_client = await voice_channel.connect()
+            vc = await voice_channel.connect()
+            if isinstance(ctx, PlaybackCtx):
+                ctx.voice_client = vc
             state.voice_channel_id = voice_channel.id
             if start_message:
                 await ctx.send(start_message)
