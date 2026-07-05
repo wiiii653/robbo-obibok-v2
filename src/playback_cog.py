@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .discord_compat import commands, discord
 
-from .cog_shared import FAVORITE_EMOJI, PlaybackCtx, logger
+from .cog_shared import FAVORITE_EMOJI, PlaybackCtx
 from .collection_loader import get_collection, load_raw_paths
 from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
