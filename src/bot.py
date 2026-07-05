@@ -85,6 +85,12 @@ class ObibokBot(commands.Bot):
         current = self._active_streams.get(guild_id)
         if current is not None and getattr(current, "source_id", None) == source_id:
             self._active_streams.pop(guild_id, None)
+        # If stream died but voice is still connected, restart the stream
+        if error:
+            vc = self.get_guild(guild_id).voice_client if self.get_guild(guild_id) else None
+            if vc and vc.is_connected():
+                logger.info("Stream died (error) but voice connected, restarting stream for guild %s", guild_id)
+                self._start_stream(guild_id, vc)
 
     def try_acquire_lease(self, guild: discord.Guild) -> bool:
         return self.playback_lease.acquire(guild.id, guild.name)
