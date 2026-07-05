@@ -76,6 +76,7 @@ class TrackMonitor:
     _empty_since: float | None = field(default=None, init=False, repr=False)
     _drop_confirmed_since: float | None = field(default=None, init=False, repr=False)
     _track_started_at: float = field(default=0.0, init=False, repr=False)
+    _was_playing: bool = field(default=False, init=False, repr=False)
 
     async def monitor_loop(
         self,
@@ -90,7 +91,7 @@ class TrackMonitor:
         self._not_playing_since = None
         self._empty_since = None
         self._drop_confirmed_since = None
-        self._track_started_at = 0.0
+        self._track_started_at = asyncio.get_running_loop().time()
 
         while True:
             await asyncio.sleep(2)
@@ -138,6 +139,15 @@ class TrackMonitor:
 
         if not playing:
             now = asyncio.get_running_loop().time()
+            if not self._was_playing:
+                if self._track_started_at > 0 and now - self._track_started_at > 30:
+                    logger.warning("Track never started playing within 30s, ending")
+                    state.is_playing = False
+                    await on_track_end(state)
+                elif self._track_started_at == 0:
+                    pass
+                else:
+                    return
             if self._not_playing_since is None:
                 self._not_playing_since = now
             else:
@@ -160,6 +170,7 @@ class TrackMonitor:
             return
 
         self._not_playing_since = None
+        self._was_playing = True
 
         track = state.current_track
         if track != self._last_track:
@@ -167,6 +178,7 @@ class TrackMonitor:
             self._last_output = 0
             self._cached_song_length = -1
             self._drop_confirmed_since = None
+            self._was_playing = False
             self._track_started_at = asyncio.get_running_loop().time()
 
         if hasattr(self.audio, "async_output_length"):
