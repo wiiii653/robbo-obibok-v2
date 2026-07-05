@@ -104,6 +104,20 @@ class PlaybackCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
+        # Handle bot's own voice reconnect — restart stream if we were playing
+        if member.bot and member.id == self.bot.user.id:
+            if after.channel is not None and before.channel is None:
+                # Bot reconnected to voice — restart stream and monitor
+                guild_id = member.guild.id
+                state = self.bot.get_state(guild_id)
+                if state.is_playing:
+                    logger.info("Bot reconnected to voice, restarting stream")
+                    vc = member.guild.voice_client
+                    if vc and vc.is_connected():
+                        self.bot._start_stream(guild_id, vc)
+                        self._install_monitor(self._get_fallback_ctx(member, vc), state)
+            return
+
         if member.bot:
             return
         if not self.bot.auto_start_channel:
@@ -153,6 +167,13 @@ class PlaybackCog(commands.Cog):
             if vc:
                 await vc.disconnect()
             logger.warning("Auto-start failed: %s", exc)
+
+    def _get_fallback_ctx(self, member: discord.Member, vc) -> FakeContext:
+        """Build a fallback context for stream restart after bot voice reconnect."""
+        from .cog_shared import FakeContext
+        async def noop_send(*args, **kwargs):
+            return None
+        return FakeContext(member.guild, member, vc, noop_send)
 
     @commands.command(aliases=["pl", "radio", "start"])
     async def play(self, ctx: commands.Context, *, query: str = "") -> None:
@@ -437,7 +458,12 @@ class PlaybackCog(commands.Cog):
             self.bot._schedule_predownload(ctx.guild.id, state)
 
     def _voice_member_count(self, ctx: commands.Context) -> int:
+        # Use the guild's actual voice client (ctx.voice_client can be stale after reconnect)
         voice_client = ctx.voice_client
+        if not voice_client or not voice_client.is_connected():
+            # Try getting fresh voice client from the guild
+            if ctx.guild:
+                voice_client = ctx.guild.voice_client
         if not voice_client or not voice_client.channel:
             return 0
         members = getattr(voice_client.channel, "members", [])
