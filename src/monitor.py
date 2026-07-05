@@ -53,10 +53,12 @@ def should_advance_after_stop(
     not_playing_since: float | None,
     now: float,
     grace_seconds: int,
+    *,
+    still_loaded: bool,
 ) -> tuple[bool, float | None]:
     if not_playing_since is None:
         return False, now
-    if now - not_playing_since >= grace_seconds:
+    if now - not_playing_since >= grace_seconds and not still_loaded:
         return True, None
     return False, not_playing_since
 
@@ -123,15 +125,17 @@ class TrackMonitor:
                 return
             self._empty_since = None
 
-        playing = self.audio.is_playing()
+        playing = await self.audio.async_is_playing()
 
         if not playing:
             now = asyncio.get_running_loop().time()
             if self._not_playing_since is None:
                 self._not_playing_since = now
             else:
+                # Check if audacious still has a track loaded (v1 compat)
+                still_loaded = bool(await self.audio.async_current_song())
                 should_advance, self._not_playing_since = should_advance_after_stop(
-                    self._not_playing_since, now, 3
+                    self._not_playing_since, now, 3, still_loaded=still_loaded
                 )
                 if should_advance:
                     logger.info("Track ended (not playing for 3s)")
@@ -141,15 +145,16 @@ class TrackMonitor:
             return
 
         self._not_playing_since = None
-        elapsed = self.audio.output_length()
-        if elapsed < 0:
-            return
 
         track = state.current_track
         if track != self._last_track:
             self._last_track = track
             self._last_output = 0
             self._drop_confirmed_since = None
+
+        elapsed = await self.audio.async_output_length()
+        if elapsed < 0:
+            return
 
         is_console = is_console_format(track)
         if elapsed < self._last_output:
@@ -183,7 +188,7 @@ class TrackMonitor:
 
         self._last_output = elapsed
 
-        total = self.audio.song_length()
+        total = await self.audio.async_song_length()
         timeout = compute_timeout(total, is_console_format=is_console)
         if elapsed >= timeout:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
