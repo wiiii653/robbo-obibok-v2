@@ -226,7 +226,18 @@ class TrackMonitor:
         total = self._cached_song_length
         timeout = compute_timeout(total, is_console_format=is_console)
 
-        if elapsed >= timeout and elapsed < 10000:
+        if is_console and total > 0:
+            # Console/GME formats: output-length resets at subsong
+            # transitions (GME internal track cycling). Use wall-clock
+            # time since _track_started_at instead of output-length.
+            now = asyncio.get_running_loop().time()
+            track_time = now - self._track_started_at
+            if track_time >= timeout:
+                logger.info("Track timeout (wall %ds >= %ds)", track_time, timeout)
+                state.is_playing = False
+                await on_track_end(state)
+                return
+        elif elapsed >= timeout and elapsed < 10000:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
             state.is_playing = False
             await on_track_end(state)
