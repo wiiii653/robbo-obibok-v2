@@ -126,9 +126,5 @@ class PlaybackState:
     played_count: int = 0
     search_results: list[str] = field(default_factory=list)
     search_collection_id: str = ""
-    subsong_path: str = ""
-    subsong_current: int = -1
-    subsong_total: int = 0
-    subsong_wavs: list[str] = field(default_factory=list)
     predownload_path: str = ""
     predownload_url: str = ""

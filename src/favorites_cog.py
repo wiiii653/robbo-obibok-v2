@@ -121,41 +121,41 @@ class FavoritesCog(commands.Cog):
         if not tracks:
             return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
         lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
-        bad_titles_seen = 0
+        _clean_re = re.compile(r'[\x00-\x1f\x7f-\x9f]')
+        bad_titles_fixed = 0
         for i, t in enumerate(tracks, 1):
             name = t.get("title", "")
-            # Strip non-printable chars (binary metadata prefixes: SID/SAP headers, etc.)
             if name:
-                name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
-            # Fix old "downloads" titles from ModArchive URLs
-            if not name or name == "downloads":
+                name = _clean_re.sub('', name).strip()
+            # Repair tracks that have missing or placeholder titles
+            # (download.php URLs stored without proper metadata, etc.)
+            if not name or name.lower() in ("downloads", "download", "untitled", "unknown", "tmp"):
                 filepath = t["filepath"]
-                bad_titles_seen += 1
                 if "downloads.php?moduleid=" in filepath:
                     mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
                     name = f"ModArchive #{mod_id}"
                 else:
-                    # Try to fetch real metadata
-                    meta = self.bot.engine.get_track_metadata(filepath, t.get("collection_id", ""))
+                    meta = await asyncio.to_thread(
+                        self.bot.engine.get_track_metadata, filepath, t.get("collection_id", "")
+                    )
                     name = meta.get("NAME", "")
-                    # Also strip nulls from fetched metadata
                     if name:
-                        name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', name).strip()
+                        name = _clean_re.sub('', name).strip()
+                if name:
+                    bad_titles_fixed += 1
             if not name:
                 fallback = t["filepath"].rsplit("/", 1)[-1]
-                # Remove extension for cleaner display
                 fallback = fallback.rsplit(".", 1)[0].replace("_", " ")
                 name = fallback
-            author_s = f" — {t['author']}" if t.get("author") else ""
+                bad_titles_fixed += 1
+            author_s = f" — {t.get('author', '')}" if t.get("author") else ""
             lines.append(f"`{i}.` {name}{author_s}")
-        if bad_titles_seen:
-            logger.info("!favs: repaired %d bad titles", bad_titles_seen)
-        first = True
-        for chunk_start in range(0, len(lines), 15):
-            if not first:
+        if bad_titles_fixed:
+            logger.info("!favs: repaired %d bad titles", bad_titles_fixed)
+        for i, chunk_start in enumerate(range(0, len(lines), 15)):
+            if i > 0:
                 await asyncio.sleep(1.5)
             await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
-            first = False
 
     @commands.command(aliases=["fp"])
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:

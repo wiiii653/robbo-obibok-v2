@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
 DEFAULT_TIMEOUT = 600
-CONSOLE_TIMEOUT = 600
+CONSOLE_TIMEOUT = 3600
 
 
 def is_console_format(filepath: str) -> bool:
@@ -28,25 +28,6 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
         return song_len + 15
     return DEFAULT_TIMEOUT
 
-
-def should_confirm_output_drop(
-    last_output_len: int,
-    current_secs: int,
-    drop_confirmed_since: float | None,
-    now: float,
-    grace_seconds: int,
-    *,
-    is_console_format: bool,
-) -> tuple[bool, float | None]:
-    if is_console_format:
-        return False, None
-    if last_output_len >= 10 and current_secs <= 5:
-        if drop_confirmed_since is None:
-            return False, now
-        if now - drop_confirmed_since >= grace_seconds:
-            return True, None
-        return False, drop_confirmed_since
-    return False, None
 
 
 def should_advance_after_stop(
@@ -146,11 +127,12 @@ class TrackMonitor:
                     still_loaded = bool(self.audio.current_song())
                 else:
                     still_loaded = bool(self.audio.song_length())
+                grace = 8 if is_console_format(state.current_track) else 1
                 should_advance, self._not_playing_since = should_advance_after_stop(
-                    self._not_playing_since, now, 3, still_loaded=still_loaded
+                    self._not_playing_since, now, grace, still_loaded=still_loaded
                 )
                 if should_advance:
-                    logger.info("Track ended (not playing for 3s)")
+                    logger.info("Track ended (not playing for %ds)", grace)
                     self._drop_confirmed_since = None
                     state.is_playing = False
                     await on_track_end(state)
@@ -176,17 +158,16 @@ class TrackMonitor:
         is_console = is_console_format(track)
         if elapsed < self._last_output:
             if is_console:
-                # console formats (sid, sap, ay, ym, ...) often report
-                # unreliable output_length — ignore drops entirely and
-                # rely on is_playing() + timeout instead
+                logger.debug("Output length dropped %d->%d on console format (ignored)", self._last_output, elapsed)
                 self._last_output = elapsed
                 return
-            # Non-console formats: same treatment — output_length resets
-            # are format quirks (MOD pattern loops, plugin glitches), not
-            # real track ends. A single-track audacious playlist never
-            # auto-advances, so a drop can only mean a format anomaly.
+            # Output length resets are format quirks (MOD pattern loops,
+            # GME internal loop), not real track ends. A single-track
+            # audacious playlist never auto-advances, so a drop can only
+            # mean a format anomaly.
             now_loop = asyncio.get_running_loop().time()
             if self._last_output >= 10 and elapsed <= 5:
+                # Classic drop signature: track ended, skip immediately
                 logger.info("Track ended (output drop %d->%d)", self._last_output, elapsed)
                 self._drop_confirmed_since = None
                 state.is_playing = False
