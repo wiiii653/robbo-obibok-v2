@@ -233,6 +233,11 @@ class TrackMonitor:
             sap_total = self.audio.total_sap_time()
             if sap_total is not None and sap_total > total:
                 total = sap_total
+        # For multi-track AY files use total time from header
+        if is_console and hasattr(self.audio, "total_ay_time"):
+            ay_total = self.audio.total_ay_time()
+            if ay_total is not None and ay_total > total:
+                total = ay_total
 
         timeout = compute_timeout(total, is_console_format=is_console)
 

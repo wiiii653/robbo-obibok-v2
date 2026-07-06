@@ -164,6 +164,23 @@ def _get_sap_songs_count(filepath: str) -> int | None:
     return None
 
 
+def _get_ay_max_track(filepath: str) -> int:
+    """Read the AY (ZXAYEMUL) header and return max_track, or 0.
+
+    max_track byte at offset 16 gives the highest track index
+    (0-based), so total songs = max_track + 1. Returns 0 (single
+    track) on any error or non-AY file.
+    """
+    try:
+        with open(filepath, "rb") as f:
+            data = f.read(20)
+    except OSError:
+        return 0
+    if len(data) < 20 or data[:8] != b"ZXAYEMUL":
+        return 0
+    return data[16]
+
+
 def _is_sap_supported(filepath: str) -> tuple[bool, str]:
     """Check if an SAP file has a TYPE that GME's Console plugin can play.
 
@@ -425,6 +442,24 @@ class AudioController:
         if per_subsong <= 0:
             return None
         return per_subsong * songs
+
+    def total_ay_time(self) -> int | None:
+        """Return total playback time for multi-track AY, or None.
+
+        Reads max_track from the AY (ZXAYEMUL) header (byte at offset 16,
+        0-based max track index) and multiplies the per-subsong length
+        from audtool by (max_track + 1).
+        """
+        fname = self._last_filepath or current_song_filename()
+        if not fname.lower().endswith(".ay"):
+            return None
+        max_track = _get_ay_max_track(fname)
+        if max_track <= 0:
+            return None
+        per_subsong = song_length()
+        if per_subsong <= 0:
+            return None
+        return per_subsong * (max_track + 1)
 
     async def async_current_song(self) -> str:
         return await asyncio.to_thread(current_song)
