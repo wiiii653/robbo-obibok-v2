@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import struct
 from pathlib import Path
 
 from .models import COLLECTIONS, FLIP_ORDER, Collection
@@ -69,15 +70,22 @@ def parse_sid_header(filepath: str) -> dict[str, str]:
             data = f.read(256)
     except OSError:
         return {}
-    if len(data) < 256 or data[:4] != b"PSID":
+    if len(data) < 256 or data[:4] not in (b"PSID", b"RSID"):
         return {}
-    title = data[16:48].decode("ascii", errors="replace")
-    author = data[48:80].decode("ascii", errors="replace")
-    copyright = data[80:112].decode("ascii", errors="replace")
+    # PSID/RSID v2+ header (all HVSC files are v2+):
+    #   offset 16-17: start song
+    #   18-21: speed
+    #   22-53: title (32 bytes)
+    #   54-85: author (32 bytes)
+    #   86-117: copyright (32 bytes)
+    vers = struct.unpack(">H", data[4:6])[0]  # noqa: F841
+    title = data[22:54].decode("ascii", errors="replace")
+    author = data[54:86].decode("ascii", errors="replace")
+    copyright_str = data[86:118].decode("ascii", errors="replace")
     return {
         "NAME": _clean_metadata(title),
         "AUTHOR": _clean_metadata(author),
-        "COPYRIGHT": _clean_metadata(copyright),
+        "COPYRIGHT": _clean_metadata(copyright_str),
     }
 
 
