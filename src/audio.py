@@ -93,6 +93,10 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
             return True
         _audacious_ready = False
 
+    # Kill any stale audacious from a previous bot instance so the new
+    # one has a clean D-Bus session and playlist state.
+    kill_player()
+
     proc = subprocess.Popen(
         ["audacious", "--headless"],
         stdout=subprocess.DEVNULL,
