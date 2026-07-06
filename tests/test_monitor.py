@@ -35,7 +35,7 @@ class TestIsConsoleFormat:
 
 class TestComputeTimeout:
     def test_known_length(self):
-        assert compute_timeout(120) == 135
+        assert compute_timeout(120) == 121
 
     def test_unknown_length(self):
         assert compute_timeout(0) == CONSOLE_TIMEOUT
@@ -43,8 +43,8 @@ class TestComputeTimeout:
     def test_negative_length(self):
         assert compute_timeout(-1) == CONSOLE_TIMEOUT
 
-    def test_console_length_uses_song_len_plus_margin(self):
-        assert compute_timeout(999, is_console_format=True) == 999 + 3
+    def test_console_length_uses_song_len_no_margin(self):
+        assert compute_timeout(999, is_console_format=True) == 999
 
 
 class TestMonitorHelpers:
