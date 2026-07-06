@@ -27,12 +27,12 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
         if song_len <= 0:
             return CONSOLE_TIMEOUT
         if song_len < 36000:
-            return min(song_len + 2, CONSOLE_TIMEOUT)
+            return min(song_len + 1, CONSOLE_TIMEOUT)
         return CONSOLE_TIMEOUT
     if song_len <= 0:
         return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
-        return song_len + 2
+        return song_len + 1
     return DEFAULT_TIMEOUT
 
 
@@ -173,7 +173,10 @@ class TrackMonitor:
                     await on_track_end(state)
             return
 
-        self._not_playing_since = None
+        if not self._was_playing:
+            self._not_playing_since = None
+            if is_console_format(state.current_track):
+                self._track_started_at = asyncio.get_running_loop().time()
         self._was_playing = True
 
         track = state.current_track
