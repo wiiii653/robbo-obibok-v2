@@ -21,14 +21,14 @@ Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-gard
 
 ## What's New in v2
 
-Complete rewrite with a **flat, minimal architecture** — 17 source modules instead of 76, 150+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
+Complete rewrite with a **flat, minimal architecture** — 24 source modules instead of 76, 230+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
 
 ## Features
 
-- 🎵 **Seven collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 7 200+), ModArchive (Amiga/PC tracker modules, 175 000+), Tiny Music modules (~550), and KGen (demoscene keygen music, 4 800+)
+- 🎵 **Seven collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~550), and KGen (demoscene keygen music, 4 800+)
 - 🔀 **Shuffle loop** — never hear the same track twice in a row
 - 🎼 **Rich metadata** — track name, composer, copyright from headers
-- ❤️ **Favorites playlist** — react to any Now Playing embed to save/remove tracks
+- ❤️ **Favorites playlist** — react with ⭐ to a Now Playing embed to save/remove tracks
 - ⏭️ **Skip**, **Stop**, **Now Playing**, **Stats**, **Search**
 - 🔄 **Auto-advance** — moves to next track when current ends, with chiptune-aware monitoring
 - 🧩 **Subsong playback** — demoscene/module tracks advance through embedded parts
@@ -46,7 +46,7 @@ Complete rewrite with a **flat, minimal architecture** — 17 source modules ins
 | Command | Description |
 |---------|-------------|
 | **Playback** | |
-| `!play` / `!pl` | Start shuffled radio from current collection |
+| `!play` / `!pl` / `!radio` / `!start` | Start shuffled radio from current collection |
 | `!play <query>` | Search, or play a direct URL, and immediately start the first match |
 | `!play <number>` | Play a track from last search results |
 | `!stop` / `!st` | Stop playback and disconnect |
@@ -77,16 +77,17 @@ Complete rewrite with a **flat, minimal architecture** — 17 source modules ins
 | `!favload` / `!fpl` | Load and play a saved playlist |
 | `!playlists` / `!plist` | List all saved playlists |
 | `!blk` | Blacklist the currently playing track |
-| `!blks` | Show blacklist |
+| `!blks` / `!blklist` | Show blacklist |
 | `!blkrm <n>` | Remove track N from blacklist |
 | **Tools & Info** | |
+| `!help` | Show command reference |
 | `!stats` | Show radio stats (uptime, tracks played) |
 | `!export` | Export queue as plain text |
 | `!ocko` | Display an ASCII owl |
 
 ### Favorites System
 
-React with **any emoji** to a Now Playing embed to save the track to your favorites. React again to remove it (toggle). Data persists in `favorites.json`.
+React with **⭐ (star)** to a Now Playing embed to save the track to your favorites. React again to remove it (toggle). Data persists in `favorites.json`.
 
 ## Collections
 
@@ -95,10 +96,10 @@ React with **any emoji** to a Now Playing embed to save the track to your favori
 | **ASMA** | `.sap` | 6 335 | Local `archiwum/asma/` |
 | **HVSC** | `.sid` | 60 811 | Local `archiwum/hvsc/C64Music/` |
 | **AY** | `.ay` | 4 550 | Local `archiwum/ay/` |
-| **YM** | `.ym` | 7 266 | Local `archiwum/ym/` |
-| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 175 000+ | Local `archiwum/modarchive/` |
+| **YM** | `.ym` | 6 919 | Local `archiwum/ym/` |
+| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 225 255 | Local `archiwum/modarchive/` |
 | **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | ~550 | Local `archiwum/tiny/` |
-| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 4 843 | Local `archiwum/kgen/` |
+| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 4 835 | Local `archiwum/kgen/` |
 
 Local archives are served from disk; remote URLs are cached before playback.
 
@@ -228,31 +229,44 @@ archive:
 auto:
   start_channel: ""      # voice channel name (empty = disabled)
   empty_timeout: 60      # seconds before disconnect when empty
+format_volumes:
+  sid: 115               # SID files at 115% volume (0-200)
+  mod: 115               # Module formats
+  xm: 115
+  s3m: 115
+  it: 115
 ```
 
 ## File Structure
 
 ```
 robbo-obibok-v2/
-├── src/                     # Source modules (17 files)
-│   ├── models.py            # Collection and PlaybackState
-│   ├── persistence.py       # JSON file I/O
-│   ├── collection_loader.py # Collection registry, index loaders, metadata
+├── src/                     # Source modules (24 files)
+│   ├── __init__.py
+│   ├── __main__.py          # python -m src entry point
 │   ├── audio.py             # PulseAudio + Audacious control
-│   ├── stream.py            # Voice stream source
-│   ├── queue.py             # Queue shuffle, blacklist, persistence
-│   ├── favorites.py         # Reaction favorites + named playlists
-│   ├── playback.py          # Playback orchestrator
-│   ├── subsong.py           # Subsong detection + conversion
-│   ├── lease.py             # Single-guild playback ownership
-│   ├── monitor.py           # Track completion detection
-│   ├── remote.py            # Remote download + cache helpers
-│   ├── embeds.py            # Discord rich embed builders
-│   ├── bot.py               # Discord bot commands + events
+│   ├── bot.py               # Discord bot setup + cog loading
+│   ├── cog_shared.py        # Shared helpers (FAVORITE_EMOJI, PlaybackCtx)
+│   ├── cogs.py              # Cog registry
+│   ├── collection_cog.py    # Collection switching commands
+│   ├── collection_loader.py # Collection registry, index loaders, metadata
 │   ├── config.py            # YAML config loading
+│   ├── discord_compat.py    # discord.py compatibility layer
+│   ├── embeds.py            # Discord rich embed builders
+│   ├── favorites.py         # Reaction favorites + named playlists
+│   ├── favorites_cog.py     # Favorites / blacklist / playlist commands
 │   ├── launcher.py          # Startup, signals, shutdown
-│   └── __main__.py          # python -m src entry point
-├── tests/                   # 150+ unit tests
+│   ├── lease.py             # Single-guild playback ownership
+│   ├── models.py            # Collection and PlaybackState
+│   ├── monitor.py           # Track completion detection
+│   ├── persistence.py       # JSON file I/O
+│   ├── playback.py          # Playback orchestrator
+│   ├── playback_cog.py      # Playback commands (!play, !skip, etc.)
+│   ├── queue.py             # Queue shuffle, blacklist, persistence
+│   ├── remote.py            # Remote download + cache helpers
+│   ├── stream.py            # Voice stream source
+│   └── tools_cog.py         # Utility commands (!stats, !ocko, !help)
+├── tests/                   # 230+ unit tests
 ├── scripts/                 # Index builder scripts
 ├── deploy/                  # systemd service files
 ├── extras/                  # Assets (banner, avatar)
