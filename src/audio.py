@@ -194,7 +194,7 @@ def play_file(filepath: str, sink_name: str) -> bool:
     play_ok = _audtool_call("playback-play")
     logger.info("play_file: add=%s play=%s", add_ok, play_ok)
     for attempt in range(3):
-        time.sleep(1)
+        time.sleep(0.2)
         if _audtool_call("playback-playing"):
             _move_to_sink(sink_name)
             logger.info("play_file: playing after attempt %d", attempt + 1)
