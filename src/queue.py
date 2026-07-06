@@ -55,7 +55,7 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
     # Reject trivially small queues — they are almost certainly remnants
     # from a failed run (e.g. first track failed, queue saved with 1 entry
     # on stop, then restored on next start instead of building a fresh one).
-    if len(queue) < 2:
+    if len(queue) < 1:
         return False
     queue_collection_ids = saved.get("queue_collection_ids")
     if queue_collection_ids is not None:
