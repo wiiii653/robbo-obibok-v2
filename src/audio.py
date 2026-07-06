@@ -298,9 +298,10 @@ def _is_audacious_alive() -> bool:
 
 
 def _move_to_sink(sink_name: str) -> None:
+    env = {**os.environ, "LC_ALL": "C"}
     result = subprocess.run(
         ["pactl", "list", "sink-inputs"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     for block in result.stdout.split("Sink Input #")[1:]:
         index, _, details = block.partition("\n")
