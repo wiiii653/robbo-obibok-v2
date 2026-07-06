@@ -27,7 +27,7 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
         if song_len <= 0:
             return CONSOLE_TIMEOUT
         if song_len < 36000:
-            return min(song_len + 1, CONSOLE_TIMEOUT)
+            return min(song_len, CONSOLE_TIMEOUT)
         return CONSOLE_TIMEOUT
     if song_len <= 0:
         return CONSOLE_TIMEOUT
@@ -98,7 +98,7 @@ class TrackMonitor:
         self._track_started_at = asyncio.get_running_loop().time()
 
         while True:
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
             try:
                 await self._tick(state, on_track_end, on_empty, get_voice_members)
                 if not state.is_playing:
