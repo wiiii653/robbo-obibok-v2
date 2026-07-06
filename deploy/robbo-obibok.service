@@ -1,6 +1,7 @@
 [Unit]
 Description=Robbo Obibok v2 — Discord Chiptune Radio
-After=network-online.target
+Documentation=https://github.com/wiiii653/robbo-obibok-v2
+After=network-online.target sound.target
 Wants=network-online.target
 
 [Service]
@@ -9,9 +10,8 @@ User=boruta
 Group=boruta
 WorkingDirectory=/home/boruta/robbo-obibok-v2
 EnvironmentFile=/home/boruta/robbo-obibok-v2/.env
-Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PYTHONPATH=/home/boruta/robbo-obibok-v2
 ExecStart=/home/boruta/robbo-obibok-v2/venv/bin/python3 -u -m src
-ExecStartPre=/usr/bin/env sh -c 'rm -f /home/boruta/robbo-obibok-v2/obibok.pid'
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
