@@ -145,41 +145,23 @@ def _get_sap_type(filepath: str) -> str | None:
     return None
 
 
-def _get_sap_total_time_seconds(filepath: str) -> int | None:
-    """Read the SAP header and sum all TIME values in seconds.
-
-    Handles TIME formats: MM:SS, MM:SS.mmm, or SS.frac
-    Returns None if no TIME fields found or file can't be read.
-    """
-    import re
+def _get_sap_songs_count(filepath: str) -> int | None:
+    """Read the SAP header and return SONGS count, or None."""
     try:
         with open(filepath, "r", encoding="ascii", errors="replace") as f:
-            total = 0
-            found = False
-            for _ in range(20):
+            for _ in range(10):
                 line = f.readline()
                 if not line:
                     break
                 stripped = line.strip().rstrip("\r")
-                if stripped.startswith("TIME "):
-                    time_str = stripped[5:].strip()
-                    parts = time_str.split()
-                    time_val = parts[0] if parts else time_str
-                    # Try MM:SS.mmm or MM:SS
-                    m = re.match(r"(\d+):(\d+(?:\.\d+)?)", time_val)
-                    if m:
-                        total += int(m.group(1)) * 60 + int(float(m.group(2)))
-                        found = True
-                        continue
-                    # Try SS.frac (seconds.fraction)
-                    m = re.match(r"(\d+(?:\.\d+)?)", time_val)
-                    if m:
-                        total += int(float(m.group(1)))
-                        found = True
-                        continue
-            return total if found else None
+                if stripped.startswith("SONGS "):
+                    try:
+                        return int(stripped[6:].strip())
+                    except (ValueError, IndexError):
+                        return None
     except OSError:
         return None
+    return None
 
 
 def _is_sap_supported(filepath: str) -> tuple[bool, str]:
@@ -427,11 +409,22 @@ class AudioController:
         return current_song_filename()
 
     def total_sap_time(self) -> int | None:
-        """Return total playback time for multi-subsong SAP, or None."""
+        """Return total playback time for multi-subsong SAP, or None.
+
+        GME ignores the TIME fields in the SAP header (those are for the
+        original Atari player). Instead, use the per-subsong length from
+        audtool (actual GME playback duration) × number of SONGS.
+        """
         fname = self._last_filepath or current_song_filename()
         if not fname.lower().endswith(".sap"):
             return None
-        return _get_sap_total_time_seconds(fname)
+        songs = _get_sap_songs_count(fname)
+        if songs is None or songs <= 1:
+            return None
+        per_subsong = song_length()
+        if per_subsong <= 0:
+            return None
+        return per_subsong * songs
 
     async def async_current_song(self) -> str:
         return await asyncio.to_thread(current_song)
