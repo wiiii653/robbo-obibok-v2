@@ -8,14 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.audio import (
-    AudioController,
-    SUPPORTED_AUDACIOUS_VERSION,
     FORMAT_VOLUMES,
+    SUPPORTED_AUDACIOUS_VERSION,
+    AudioController,
     check_audacious_version,
     get_audacious_version,
-    load_format_volumes_from_dict,
     get_volume,
     is_playing,
+    load_format_volumes_from_dict,
     output_length,
     play_file,
     set_volume,
@@ -240,8 +240,8 @@ class TestPlayerLifecycle:
         proc.poll.return_value = None
         mock_popen.return_value = proc
         mock_version.return_value = None
-        from src.audio import start_player
         import src.audio
+        from src.audio import start_player
 
         src.audio._audacious_ready = False
 

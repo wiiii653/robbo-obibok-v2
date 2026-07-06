@@ -81,7 +81,6 @@ class TestTrackMonitor:
 
     @pytest.mark.asyncio
     async def test_monitor_tick_detects_track_end(self):
-        import time
 
         audio = type("MockAudio", (), {
             "is_playing": lambda self=None: False,
