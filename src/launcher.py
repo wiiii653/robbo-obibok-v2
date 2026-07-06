@@ -18,12 +18,26 @@ from .queue import Blacklist
 logger = logging.getLogger("robbo_obibok")
 
 
-def setup_logging() -> None:
+def setup_logging(root_dir: str = "") -> None:
+    log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    log_datefmt = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        format=log_format,
+        datefmt=log_datefmt,
     )
+    # Also write to a rotating file under var/ when root_dir is given
+    if root_dir:
+        from logging.handlers import RotatingFileHandler
+        log_dir = Path(root_dir) / "var"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            str(log_dir / "robbo-obibok.log"),
+            maxBytes=10_485_760,  # 10 MB
+            backupCount=3,
+        )
+        handler.setFormatter(logging.Formatter(log_format, log_datefmt))
+        logging.getLogger("robbo_obibok").addHandler(handler)
 
 
 def load_dotenv(root_dir: str) -> None:
@@ -96,7 +110,7 @@ def remove_pid() -> None:
 
 
 def main() -> None:
-    setup_logging()
+    setup_logging(root_dir=os.getcwd())
     config = load_config()
 
     load_dotenv(config.root_dir)
