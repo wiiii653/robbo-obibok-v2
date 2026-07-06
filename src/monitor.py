@@ -27,12 +27,12 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
         if song_len <= 0:
             return CONSOLE_TIMEOUT
         if song_len < 36000:
-            return min(song_len + 0, CONSOLE_TIMEOUT)
+            return min(song_len + 2, CONSOLE_TIMEOUT)
         return CONSOLE_TIMEOUT
     if song_len <= 0:
         return CONSOLE_TIMEOUT
     if 10 < song_len < 36000:
-        return song_len + 0
+        return song_len + 2
     return DEFAULT_TIMEOUT
 
 
