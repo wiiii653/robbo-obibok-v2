@@ -119,6 +119,20 @@ class CollectionCog(commands.Cog):
         col = get_collection(collection_id)
         await ctx.send(f"{col.flip_tag} **Switched to {col.name}**" if col else f"Switched to {collection_id}")
         if not active:
+            # Auto-start if user is in a voice channel
+            if ctx.author.voice and ctx.author.voice.channel and self.bot.try_acquire_lease(ctx.guild):
+                try:
+                    await ctx.author.voice.channel.connect()
+                    state.voice_channel_id = ctx.author.voice.channel.id
+                    track = await self.bot.engine.start_radio(state, collection_id=collection_id, user_id=ctx.author.id)
+                    if track:
+                        cog = self.bot.get_cog("PlaybackCog")
+                        if cog:
+                            await cog._play_and_monitor(ctx, state)
+                    else:
+                        self.bot.release_lease(ctx.guild.id)
+                except Exception:
+                    self.bot.release_lease(ctx.guild.id)
             return
         try:
             await ctx.author.voice.channel.connect()
