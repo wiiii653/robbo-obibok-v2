@@ -98,7 +98,7 @@ class TrackMonitor:
         self._track_started_at = asyncio.get_running_loop().time()
 
         while True:
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.25)
             try:
                 await self._tick(state, on_track_end, on_empty, get_voice_members)
                 if not state.is_playing:
