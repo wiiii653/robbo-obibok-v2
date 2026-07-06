@@ -224,6 +224,13 @@ class TrackMonitor:
             else:
                 self._cached_song_length = self.audio.song_length()
         total = self._cached_song_length
+
+        # For multi-subsong SAP files use total time from header
+        if is_console and hasattr(self.audio, "total_sap_time"):
+            sap_total = self.audio.total_sap_time()
+            if sap_total is not None and sap_total > total:
+                total = sap_total
+
         timeout = compute_timeout(total, is_console_format=is_console)
 
         if is_console and total > 0:

@@ -145,6 +145,43 @@ def _get_sap_type(filepath: str) -> str | None:
     return None
 
 
+def _get_sap_total_time_seconds(filepath: str) -> int | None:
+    """Read the SAP header and sum all TIME values in seconds.
+
+    Handles TIME formats: MM:SS, MM:SS.mmm, or SS.frac
+    Returns None if no TIME fields found or file can't be read.
+    """
+    import re
+    try:
+        with open(filepath, "r", encoding="ascii", errors="replace") as f:
+            total = 0
+            found = False
+            for _ in range(20):
+                line = f.readline()
+                if not line:
+                    break
+                stripped = line.strip().rstrip("\r")
+                if stripped.startswith("TIME "):
+                    time_str = stripped[5:].strip()
+                    parts = time_str.split()
+                    time_val = parts[0] if parts else time_str
+                    # Try MM:SS.mmm or MM:SS
+                    m = re.match(r"(\d+):(\d+(?:\.\d+)?)", time_val)
+                    if m:
+                        total += int(m.group(1)) * 60 + int(float(m.group(2)))
+                        found = True
+                        continue
+                    # Try SS.frac (seconds.fraction)
+                    m = re.match(r"(\d+(?:\.\d+)?)", time_val)
+                    if m:
+                        total += int(float(m.group(1)))
+                        found = True
+                        continue
+            return total if found else None
+    except OSError:
+        return None
+
+
 def _is_sap_supported(filepath: str) -> tuple[bool, str]:
     """Check if an SAP file has a TYPE that GME's Console plugin can play.
 
@@ -221,6 +258,15 @@ def current_song() -> str:
     """Return the song title as reported by Audacious (audtool current-song)."""
     result = subprocess.run(
         ["audtool", "current-song"],
+        capture_output=True, text=True, timeout=10,
+    )
+    return result.stdout.strip()
+
+
+def current_song_filename() -> str:
+    """Return the full filepath of the currently playing song."""
+    result = subprocess.run(
+        ["audtool", "current-song-filename"],
         capture_output=True, text=True, timeout=10,
     )
     return result.stdout.strip()
@@ -374,6 +420,16 @@ class AudioController:
 
     def current_song(self) -> str:
         return current_song()
+
+    def current_song_filename(self) -> str:
+        return current_song_filename()
+
+    def total_sap_time(self) -> int | None:
+        """Return total playback time for multi-subsong SAP, or None."""
+        fname = current_song_filename()
+        if not fname.lower().endswith(".sap"):
+            return None
+        return _get_sap_total_time_seconds(fname)
 
     async def async_current_song(self) -> str:
         return await asyncio.to_thread(current_song)
