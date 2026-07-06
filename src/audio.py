@@ -380,6 +380,7 @@ def _audtool_call(*args: str) -> bool:
 @dataclass(slots=True)
 class AudioController:
     sink_name: str = "robbo_bot"
+    _last_filepath: str = ""
 
     def setup(self) -> None:
         if not setup_sink(self.sink_name):
@@ -392,6 +393,7 @@ class AudioController:
             enable_sid_plugin()
 
     def play(self, filepath: str) -> bool:
+        self._last_filepath = filepath
         return play_file(filepath, self.sink_name)
 
     def stop(self) -> None:
@@ -426,7 +428,7 @@ class AudioController:
 
     def total_sap_time(self) -> int | None:
         """Return total playback time for multi-subsong SAP, or None."""
-        fname = current_song_filename()
+        fname = self._last_filepath or current_song_filename()
         if not fname.lower().endswith(".sap"):
             return None
         return _get_sap_total_time_seconds(fname)
