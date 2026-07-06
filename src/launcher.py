@@ -37,7 +37,10 @@ def setup_logging(root_dir: str = "") -> None:
             backupCount=3,
         )
         handler.setFormatter(logging.Formatter(log_format, log_datefmt))
-        logging.getLogger("robbo_obibok").addHandler(handler)
+        root = logging.getLogger()
+        root.addHandler(handler)
+        # Keep discord.py from flooding the log with debug
+        logging.getLogger("discord").setLevel(logging.WARNING)
 
 
 def load_dotenv(root_dir: str) -> None:
