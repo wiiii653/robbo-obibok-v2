@@ -84,6 +84,7 @@ def create_bot(config: AppConfig) -> ObibokBot:
         root_dir=root_dir,
         archive_root=config.archive_path,
         shuffle_queue=config.playback.shuffle,
+        default_loop=config.playback.loop,
     )
     monitor = TrackMonitor(audio=audio, empty_timeout=config.auto.empty_timeout)
 
