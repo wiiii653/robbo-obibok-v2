@@ -43,6 +43,7 @@ class PlaybackEngine:
     root_dir: str
     archive_root: str = "archiwum"
     shuffle_queue: bool = True
+    default_loop: bool = False
 
     def _clear_remote_state(self, state: PlaybackState) -> None:
         state.predownload_path = ""
@@ -72,6 +73,7 @@ class PlaybackEngine:
             saved = load_queue(state.guild_id, self.root_dir)
             if can_restore_queue(saved, filtered, state.collection_mode):
                 restore_queue(saved, state)
+                state.is_looping = self.default_loop  # <-- config overrides saved value
                 restored = True
         if not restored:
             import random
