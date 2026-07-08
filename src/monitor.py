@@ -235,9 +235,11 @@ class TrackMonitor:
         total = self._cached_song_length
 
         # For multi-subsong SAP files use total time from header
+        # The header TIME is more reliable than GME's audtool value
+        # (GME often inflates song_length for some SAP files).
         if is_console and hasattr(self.audio, "total_sap_time"):
             sap_total = self.audio.total_sap_time()
-            if sap_total is not None and sap_total > total:
+            if sap_total is not None:
                 total = sap_total
         # For multi-track AY files use total time from header
         if is_console and hasattr(self.audio, "total_ay_time"):
