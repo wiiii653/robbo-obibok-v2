@@ -89,6 +89,7 @@ class PlaybackCog(commands.Cog):
                                 await vc.disconnect()
                             new_vc = await channel.connect()
                             self.bot._start_stream(guild_id, new_vc)
+                            self.bot._cancel_monitor(guild_id)
                             ctx = self._get_fallback_ctx(guild.me, new_vc)
                             self._install_monitor(ctx, state)
                             logger.info("Voice reconnected for guild %s after RESUME", guild_id)
@@ -167,6 +168,7 @@ class PlaybackCog(commands.Cog):
                     vc = member.guild.voice_client
                     if vc and vc.is_connected():
                         self.bot._start_stream(guild_id, vc)
+                        self.bot._cancel_monitor(guild_id)
                         self._install_monitor(self._get_fallback_ctx(member, vc), state)
             return
 
