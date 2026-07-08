@@ -560,10 +560,16 @@ class AudioController:
     def total_sap_time(self) -> int | None:
         """Return total playback time for SAP, or None.
 
-        Uses max(header TIME sum, GME song_length) to avoid both
-        early cut-off (header too short — e.g. Nekrofil: TIME=44s,
-        GME=52s) and excessive looping (GME inflated — e.g. Crocketts
-        Theme: TIME=200s, GME=285s).
+        Uses max(header TIME sum, GME song_length) to prevent early
+        cut-off — some SAP files have header TIME shorter than actual
+        GME playback (e.g. Nekrofil: TIME=44s, GME=52s — header alone
+        would cut 8s early).
+
+        Trade-off: if GME over-reports (Crocketts Theme: TIME=200s,
+        GME=208-285s), max() preserves the inflated value, causing
+        some looping before wall-clock timeout fires. This is preferred
+        over early cut-off (which is silent data loss rather than
+        audible redundancy).
 
         For multi-song SAP: GME total = per_subsong × SONGS.
         Header total = sum of all TIME lines from SAP header.
