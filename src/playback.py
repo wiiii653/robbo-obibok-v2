@@ -83,6 +83,7 @@ class PlaybackEngine:
                 random.shuffle(state.queue)
             state.queue_collection_ids = [state.collection_mode] * len(state.queue)
             state.position = 0
+            state.is_looping = self.default_loop
         track = current_track(state)
         if track:
             if state.guild_id:

@@ -174,6 +174,9 @@ def _get_ay_max_track(filepath: str) -> int:
     max_track byte at offset 16 gives the highest track index
     (0-based), so total songs = max_track + 1. Returns 0 (single
     track) on any error or non-AY file.
+
+    Only lower 4 bits are the track count — upper bits may carry
+    flags (common in AY headers), so they are masked out.
     """
     try:
         with open(filepath, "rb") as f:
@@ -182,7 +185,27 @@ def _get_ay_max_track(filepath: str) -> int:
         return 0
     if len(data) < 20 or data[:8] != b"ZXAYEMUL":
         return 0
-    return data[16]
+    return data[16] & 0x0F
+
+
+def _get_sid_songs_count(filepath: str) -> int:
+    """Read the SID (PSID/RSID) header and return number of songs, or 1.
+
+    The number of songs is a big-endian word at offset 14 (0x0E).
+    Returns 1 (single song) on any error or non-SID file.
+    """
+    try:
+        with open(filepath, "rb") as f:
+            data = f.read(18)
+    except OSError:
+        return 1
+    if len(data) < 16:
+        return 1
+    magic = data[:4]
+    if magic not in (b"PSID", b"RSID"):
+        return 1
+    songs = (data[14] << 8) | data[15]
+    return max(songs, 1)
 
 
 def _is_sap_supported(filepath: str) -> tuple[bool, str]:
@@ -223,6 +246,26 @@ def play_file(filepath: str, sink_name: str) -> bool:
         logger.warning("play_file: attempt %d failed, retrying", attempt + 1)
     _audtool_call("playlist-clear")
     logger.warning("play_file: FAILED after 3 attempts, filepath=%s — will retry later", filepath)
+
+    # If Audacious died, restart it and try one more time
+    if not _is_audacious_alive():
+        logger.warning("play_file: Audacious DEAD, restarting and retrying...")
+        kill_player()
+        start_player(sink_name)
+        _audtool_call("playlist-clear")
+        time.sleep(0.3)
+        _audtool_call("playlist-addurl", filepath)
+        _audtool_call("playback-play")
+        for attempt in range(3):
+            time.sleep(0.2)
+            if _audtool_call("playback-playing"):
+                _move_to_sink(sink_name)
+                logger.info("play_file: playing after restart (attempt %d)", attempt + 1)
+                return True
+            logger.warning("play_file: restart retry attempt %d failed", attempt + 1)
+        _audtool_call("playlist-clear")
+        logger.error("play_file: STILL FAILED after restart, filepath=%s", filepath)
+
     return False
 
 
@@ -464,6 +507,25 @@ class AudioController:
         if per_subsong <= 0:
             return None
         return per_subsong * (max_track + 1)
+
+    def total_sid_time(self) -> int | None:
+        """Return total playback time for multi-song SID, or None.
+
+        SID files can contain multiple subtunes. Audacious cycles
+        through all subtunes via playMaxTime=180s each, so the
+        total playback time is song_length() × number of songs.
+        """
+        fname = self._last_filepath or current_song_filename()
+        if not (fname.lower().endswith(".sid") or fname.lower().endswith(".psid")
+                or fname.lower().endswith(".rsid")):
+            return None
+        songs = _get_sid_songs_count(fname)
+        if songs <= 1:
+            return None
+        per_subsong = song_length()
+        if per_subsong <= 0:
+            return None
+        return per_subsong * songs
 
     async def async_current_song(self) -> str:
         return await asyncio.to_thread(current_song)

@@ -148,12 +148,17 @@ class TestMonitorTickBranches:
 
     @pytest.mark.asyncio
     async def test_tick_timeout_detection(self):
+        """Console format without known song length uses wall-clock timeout."""
         audio = type("MockAudio", (), {
             "is_playing": lambda self=None: True,
             "output_length": lambda self=None: 9999,
             "song_length": lambda self=None: 0,
         })()
         monitor = TrackMonitor(audio=audio)
+        # Simulate track started 200s ago so wall-clock fires at CONSOLE_TIMEOUT_UNKNOWN=180
+        monitor._track_started_at = asyncio.get_running_loop().time() - 200
+        monitor._last_track = "test.sap"  # prevent track-change reset
+        monitor._was_playing = True  # simulate already-playing state
         state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
         ended = []
 
