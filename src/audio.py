@@ -425,10 +425,26 @@ def enable_sid_plugin() -> None:
 
 def disable_repeat() -> None:
     """Disable playlist repeat so GME doesn't loop finished tracks."""
-    if _audtool_call("playlist-repeat-toggle"):
-        logger.info("Audacious playlist repeat disabled")
-    else:
-        logger.warning("Failed to disable playlist repeat")
+    try:
+        result = subprocess.run(
+            ["audtool", "playlist-repeat-status"],
+            capture_output=True, text=True, timeout=10,
+        )
+        status = result.stdout.strip().lower() if result.returncode == 0 else ""
+        if status == "off":
+            logger.info("Audacious playlist repeat already off")
+            return
+        if status == "on":
+            if subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode == 0:
+                logger.info("Audacious playlist repeat disabled")
+                return
+        # Status unknown — try toggling
+        if subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode == 0:
+            logger.info("Audacious playlist repeat toggled (assumed off now)")
+            return
+    except OSError:
+        pass
+    logger.warning("Could not disable Audacious playlist repeat")
 
 
 def setup_sid_config() -> None:
