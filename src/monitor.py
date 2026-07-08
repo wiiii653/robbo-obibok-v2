@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
 DEFAULT_TIMEOUT = 600
 CONSOLE_TIMEOUT = 3600
+CONSOLE_TIMEOUT_UNKNOWN = 180
 
 
 def is_console_format(filepath: str) -> bool:
@@ -25,7 +26,7 @@ def is_console_format(filepath: str) -> bool:
 def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
     if is_console_format:
         if song_len <= 0:
-            return CONSOLE_TIMEOUT
+            return CONSOLE_TIMEOUT_UNKNOWN
         if song_len < 36000:
             return min(song_len, CONSOLE_TIMEOUT)
         return CONSOLE_TIMEOUT
@@ -96,6 +97,7 @@ class TrackMonitor:
         self._empty_since = None
         self._drop_confirmed_since = None
         self._track_started_at = asyncio.get_running_loop().time()
+        self._was_playing = False
 
         while True:
             await asyncio.sleep(0.25)
@@ -146,8 +148,10 @@ class TrackMonitor:
             if not self._was_playing:
                 if self._track_started_at > 0 and now - self._track_started_at > 30:
                     logger.warning("Track never started playing within 30s, ending")
+                    self._was_playing = False
                     state.is_playing = False
                     await on_track_end(state)
+                    return
                 elif self._track_started_at == 0:
                     pass
                 else:
@@ -169,12 +173,13 @@ class TrackMonitor:
                 if should_advance:
                     logger.info("Track ended (not playing for %ds)", grace)
                     self._drop_confirmed_since = None
+                    self._was_playing = False
                     state.is_playing = False
                     await on_track_end(state)
             return
 
+        self._not_playing_since = None
         if not self._was_playing:
-            self._not_playing_since = None
             if is_console_format(state.current_track):
                 self._track_started_at = asyncio.get_running_loop().time()
         self._was_playing = True
@@ -209,6 +214,7 @@ class TrackMonitor:
                 # Classic drop signature: track ended, skip immediately
                 logger.info("Track ended (output drop %d->%d)", self._last_output, elapsed)
                 self._drop_confirmed_since = None
+                self._was_playing = False
                 state.is_playing = False
                 await on_track_end(state)
                 return
@@ -238,10 +244,15 @@ class TrackMonitor:
             ay_total = self.audio.total_ay_time()
             if ay_total is not None and ay_total > total:
                 total = ay_total
+        # For multi-song SID files use total time from header
+        if is_console and hasattr(self.audio, "total_sid_time"):
+            sid_total = self.audio.total_sid_time()
+            if sid_total is not None and sid_total > total:
+                total = sid_total
 
         timeout = compute_timeout(total, is_console_format=is_console)
 
-        if is_console and total > 0:
+        if is_console:
             # Console/GME formats: output-length resets at subsong
             # transitions (GME internal track cycling). Use wall-clock
             # time since _track_started_at instead of output-length.
@@ -249,11 +260,13 @@ class TrackMonitor:
             track_time = now - self._track_started_at
             if track_time >= timeout:
                 logger.info("Track timeout (wall %ds >= %ds)", track_time, timeout)
+                self._was_playing = False
                 state.is_playing = False
                 await on_track_end(state)
                 return
         elif elapsed >= timeout and elapsed < 10000:
             logger.info("Track timeout (%ds >= %ds)", elapsed, timeout)
+            self._was_playing = False
             state.is_playing = False
             await on_track_end(state)
             return
