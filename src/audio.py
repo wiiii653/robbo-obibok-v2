@@ -535,32 +535,40 @@ class AudioController:
     def total_sap_time(self) -> int | None:
         """Return total playback time for SAP, or None.
 
-        Parses the SAP header TIME field(s) to get the authoritative
-        playback duration. For multi-song SAP correctly sums all
-        subsong durations. Falls back to audtool song_length() if
-        the header has no parseable TIME values.
+        Uses max(header TIME sum, GME song_length) to avoid both
+        early cut-off (header too short — e.g. Nekrofil: TIME=44s,
+        GME=52s) and excessive looping (GME inflated — e.g. Crocketts
+        Theme: TIME=200s, GME=285s).
 
-        The header TIME is preferred over GME's audtool value because
-        GME often inflates song_length() for certain SAP files
-        (e.g. Crocketts Theme: TIME=200s, GME reported 285s).
+        For multi-song SAP: GME total = per_subsong × SONGS.
+        Header total = sum of all TIME lines from SAP header.
         """
         fname = self._last_filepath or current_song_filename()
         if not fname.lower().endswith(".sap"):
             return None
 
-        # Prefer SAP header TIME — it matches actual GME playback duration
-        total = _get_sap_time_seconds(fname)
-        if total is not None and total > 0:
-            return total
+        # 1) Header-derived total (sum of all TIME lines)
+        header_total = _get_sap_time_seconds(fname)
 
-        # Fallback to audtool (less accurate for some files)
-        sl = song_length()
-        if sl <= 0:
-            return None
-        songs = _get_sap_songs_count(fname)
-        if songs is not None and songs > 1:
-            return sl * songs
-        return sl
+        # 2) GME-derived total (song_length × SONGS)
+        gme_per = song_length()
+        if gme_per <= 0:
+            gme_total = None
+        else:
+            songs = _get_sap_songs_count(fname)
+            if songs is not None and songs > 1:
+                gme_total = gme_per * songs
+            else:
+                gme_total = gme_per
+
+        # 3) Use max of both, falling back to whichever is available
+        if header_total is not None and gme_total is not None:
+            return max(header_total, gme_total)
+        if header_total is not None:
+            return header_total
+        if gme_total is not None:
+            return gme_total
+        return None
 
     def total_ay_time(self) -> int | None:
         """Return total playback time for multi-track AY, or None.
