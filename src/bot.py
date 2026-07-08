@@ -165,6 +165,17 @@ class ObibokBot(commands.Bot):
                     logger.warning("Health watchdog: ensure_ready took %.2fs (long tick)", elapsed)
             except Exception as exc:
                 logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
+            # Check active voice streams
+            for gid in list(self._active_streams.keys()):
+                guild = self.get_guild(gid)
+                if not guild:
+                    continue
+                vc = guild.voice_client
+                if not vc or not vc.is_connected():
+                    logger.warning("Health watchdog: voice disconnected for active stream in guild %s", gid)
+                elif not vc.is_playing():
+                    logger.warning("Health watchdog: voice connected but not playing for guild %s, restarting stream", gid)
+                    self._start_stream(gid, vc)
 
 
 

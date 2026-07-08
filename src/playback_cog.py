@@ -67,6 +67,34 @@ class PlaybackCog(commands.Cog):
                     self.bot.release_lease(guild.id)
                     break
 
+    @commands.Cog.listener()
+    async def on_resumed(self) -> None:
+        """After gateway RESUME, restart active streams that lost voice sync."""
+        logger.info("Gateway resumed, checking %d active streams", len(self.bot._active_streams))
+        for guild_id in list(self.bot._active_streams.keys()):
+            guild = self.bot.get_guild(guild_id)
+            if not guild:
+                continue
+            vc = guild.voice_client
+            if vc and vc.is_connected():
+                logger.info("Restarting stream for guild %s after RESUME", guild_id)
+                self.bot._start_stream(guild_id, vc)
+            else:
+                state = self.bot.get_state(guild_id)
+                if state.is_playing and state.voice_channel_id:
+                    channel = guild.get_channel(state.voice_channel_id)
+                    if channel:
+                        try:
+                            if vc:
+                                await vc.disconnect()
+                            new_vc = await channel.connect()
+                            self.bot._start_stream(guild_id, new_vc)
+                            ctx = self._get_fallback_ctx(guild.me, new_vc)
+                            self._install_monitor(ctx, state)
+                            logger.info("Voice reconnected for guild %s after RESUME", guild_id)
+                        except Exception as exc:
+                            logger.warning("Voice reconnect failed for guild %s: %s", guild_id, exc)
+
     async def _can_control_audio(self, ctx: commands.Context, *, require_owner: bool = False) -> bool:
         if not ctx.guild:
             return False
@@ -464,12 +492,46 @@ class PlaybackCog(commands.Cog):
             return
         guild_id = ctx.guild.id
 
+        _stuck_count: int = 0
+
         async def on_track_end(s: PlaybackState) -> None:
+            nonlocal _stuck_count
+
+            prev_track = s.current_track
             next_t = await self.bot.engine.skip_track(s)
             if next_t:
+                # Stuck-track guard: if same track loops 3x in a row due to
+                # broken file + is_looping=True, break the cycle.
+                if next_t == prev_track:
+                    _stuck_count += 1
+                    if _stuck_count >= 3:
+                        logger.warning("Track stuck after %d timeouts, force-skipping: %s", _stuck_count, prev_track)
+                        _stuck_count = 0
+                        s.is_looping = False
+                        # Advance past the stuck track
+                        s.position += 1
+                        if s.position >= len(s.queue):
+                            s.queue = []
+                            s.position = 0
+                            next_t = await self.bot.engine.start_radio(s, user_id=0)
+                        else:
+                            next_t = await self.bot.engine.play_track(s)
+                        if not next_t:
+                            await self._finish_playback(ctx, s, "All tracks stuck. Playlist ended.")
+                            return
+                else:
+                    _stuck_count = 0
                 await self._after_track_started(ctx, s)
             else:
-                await self._finish_playback(ctx, s, "Playlist ended.")
+                # Queue exhausted — restart radio from collection
+                _stuck_count = 0
+                s.queue = []
+                s.position = 0
+                track = await self.bot.engine.start_radio(s, user_id=0)
+                if track:
+                    await self._after_track_started(ctx, s)
+                else:
+                    await self._finish_playback(ctx, s, "Playlist ended.")
 
         async def on_empty() -> None:
             await self.bot.engine.stop(state)
