@@ -20,6 +20,12 @@ from src.audio import (
     play_file,
     set_volume,
     song_length,
+    _parse_sap_time,
+    _get_sap_time_seconds,
+    _get_sap_songs_count,
+    _get_ay_max_track,
+    _get_sid_songs_count,
+    disable_repeat,
 )
 
 
@@ -412,3 +418,79 @@ class TestAudioConfig:
         ctrl.ensure_ready()
         mock_sink.assert_called_once_with("robbo_bot")
         mock_ensure.assert_called_once()
+
+
+class TestSapTimeParsing:
+    def test_parse_sap_time_standard(self):
+        assert _parse_sap_time("03:20") == 200
+        assert _parse_sap_time("00:44") == 44
+        assert _parse_sap_time("01:00") == 60
+
+    def test_parse_sap_time_with_milliseconds(self):
+        assert _parse_sap_time("03:20.09") == 200
+        assert _parse_sap_time("02:57.133") == 177
+        assert _parse_sap_time("00:44.925") == 44
+
+    def test_parse_sap_time_zero_refused(self):
+        assert _parse_sap_time("00:00") is None
+        assert _parse_sap_time("00:00.00") is None
+
+    def test_parse_sap_time_invalid(self):
+        assert _parse_sap_time("") is None
+        assert _parse_sap_time("abc") is None
+        assert _parse_sap_time("not_a_time") is None
+
+    def test_get_sap_time_seconds_real_files(self):
+        """Read real SAP files from the archive."""
+        base = "/home/boruta/robbo-obibok-v2/archiwum/asma"
+        cases = [
+            ("Composers/Husak_Jakub/Sweet_Dreams.sap", 200),
+            ("Composers/Esquivel_Sal/Crocketts_Theme.sap", 200),
+            ("Games/Milk_Race.sap", 250),
+            ("Games/Pooyan.sap", 34),
+        ]
+        for rel_path, expected in cases:
+            got = _get_sap_time_seconds(f"{base}/{rel_path}")
+            assert got == expected, f"{rel_path}: expected {expected}, got {got}"
+
+    def test_get_sap_songs_count(self):
+        base = "/home/boruta/robbo-obibok-v2/archiwum/asma"
+        assert _get_sap_songs_count(f"{base}/Games/Milk_Race.sap") == 3
+        assert _get_sap_songs_count(f"{base}/Games/Pooyan.sap") == 2
+        # Single-song SAP has no SONGS header
+        assert _get_sap_songs_count(f"{base}/Composers/Husak_Jakub/Sweet_Dreams.sap") is None
+
+
+class TestAyHeader:
+    def test_ay_max_track_zero_for_non_ay(self):
+        assert _get_ay_max_track("/nonexistent/file.sap") == 0
+
+    def test_ay_max_track_nonexistent(self):
+        assert _get_ay_max_track("/nonexistent/file.ay") == 0
+
+
+class TestSidHeader:
+    def test_sid_songs_count_returns_one_for_non_sid(self):
+        assert _get_sid_songs_count("/nonexistent/file.sap") == 1
+
+    def test_sid_songs_count_nonexistent(self):
+        assert _get_sid_songs_count("/nonexistent/file.sid") == 1
+
+
+class TestDisableRepeat:
+    @patch("src.audio.subprocess.run")
+    def test_disable_repeat_turns_off_when_on(self, mock_run):
+        """Simulate repeat-status=on, toggle succeeds."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="on\n"),     # status check
+            MagicMock(returncode=0, stdout=""),           # toggle
+        ]
+        disable_repeat()
+        assert mock_run.call_count >= 2
+
+    @patch("src.audio.subprocess.run")
+    def test_disable_repeat_skips_when_off(self, mock_run):
+        """Simulate repeat-status=off, no toggle needed."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="off\n")
+        disable_repeat()
+        assert mock_run.call_count == 1  # only status check, no toggle
