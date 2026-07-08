@@ -168,6 +168,55 @@ def _get_sap_songs_count(filepath: str) -> int | None:
     return None
 
 
+def _parse_sap_time(time_str: str) -> int | None:
+    """Parse a SAP TIME value (MM:SS or MM:SS.xxx) to seconds, or None."""
+    time_str = time_str.strip()
+    if not time_str:
+        return None
+    parts = time_str.split(":")
+    if len(parts) < 2:
+        return None
+    try:
+        minutes = int(parts[0])
+        sec_parts = parts[1].split(".")
+        seconds = int(sec_parts[0])
+        total = minutes * 60 + seconds
+        return total if total > 0 else None
+    except (ValueError, IndexError):
+        return None
+
+
+def _get_sap_time_seconds(filepath: str) -> int | None:
+    """Read the SAP header and return TIME in seconds, or None.
+
+    SAP format::
+        TIME 03:20           -> 200s
+        TIME 03:20.09        -> 200s (ms truncated)
+        TIME 02:57.133       -> 177s
+
+    For multi-song SAP: uses the FIRST TIME found as per-subsong.
+    GME uses header TIME for actual playback duration, but audtool
+    may report a different (inflated) value, so the header is authoritative.
+    """
+    try:
+        with open(filepath, "r", encoding="ascii", errors="replace") as f:
+            for _ in range(30):
+                line = f.readline()
+                if not line:
+                    break
+                stripped = line.strip().rstrip("\r")
+                if stripped.startswith("TIME "):
+                    raw = stripped[5:].strip()
+                    # Take first token (multi-song SAP may have multiple times)
+                    raw = raw.split()[0] if raw else ""
+                    result = _parse_sap_time(raw)
+                    if result is not None:
+                        return result
+    except OSError:
+        pass
+    return None
+
+
 def _get_ay_max_track(filepath: str) -> int:
     """Read the AY (ZXAYEMUL) header and return max_track, or 0.
 
@@ -473,22 +522,31 @@ class AudioController:
         return current_song_filename()
 
     def total_sap_time(self) -> int | None:
-        """Return total playback time for multi-subsong SAP, or None.
+        """Return total playback time for SAP, or None.
 
-        GME ignores the TIME fields in the SAP header (those are for the
-        original Atari player). Instead, use the per-subsong length from
-        audtool (actual GME playback duration) × number of SONGS.
+        Uses the SAP header TIME field as per-subsong length (more accurate
+        than audtool's reported length — GME often inflates the value).
+        For multi-song SAP (SONGS > 1): per-subsong × SONGS.
+        For single-song SAP: returns per-subsong length (fallback allows
+        the monitor to use header TIME instead of potentially-wrong audtool).
+        Falls back to audtool song_length() if header TIME not available.
         """
         fname = self._last_filepath or current_song_filename()
         if not fname.lower().endswith(".sap"):
             return None
+
+        # Prefer SAP header TIME — it matches actual GME playback duration
+        per_subsong = _get_sap_time_seconds(fname)
+        if per_subsong is None:
+            # Fallback to audtool (less accurate for some files)
+            per_subsong = song_length()
+        if per_subsong is None or per_subsong <= 0:
+            return None
+
         songs = _get_sap_songs_count(fname)
-        if songs is None or songs <= 1:
-            return None
-        per_subsong = song_length()
-        if per_subsong <= 0:
-            return None
-        return per_subsong * songs
+        if songs is not None and songs > 1:
+            return per_subsong * songs
+        return per_subsong  # single-song SAP (or no SONGS header)
 
     def total_ay_time(self) -> int | None:
         """Return total playback time for multi-track AY, or None.
