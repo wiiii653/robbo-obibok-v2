@@ -423,6 +423,14 @@ def enable_sid_plugin() -> None:
     logger.info("Audacious SID plugin enabled")
 
 
+def disable_repeat() -> None:
+    """Disable playlist repeat so GME doesn't loop finished tracks."""
+    if _audtool_call("playlist-repeat-toggle"):
+        logger.info("Audacious playlist repeat disabled")
+    else:
+        logger.warning("Failed to disable playlist repeat")
+
+
 def setup_sid_config() -> None:
     _audtool_call("config-set", "SID Player:playMaxTimeEnable", "TRUE")
     _audtool_call("config-set", "SID Player:playMaxTime", "180")
@@ -497,6 +505,7 @@ class AudioController:
             enable_compressor()
             enable_console_plugin()
             enable_sid_plugin()
+            disable_repeat()
 
     def play(self, filepath: str) -> bool:
         self._last_filepath = filepath

@@ -160,13 +160,16 @@ class TrackMonitor:
                 self._not_playing_since = now
             else:
                 # Check if audacious still has a track loaded (v1 compat)
-                if hasattr(self.audio, "async_current_song"):
+                # For console formats the file stays loaded after end — ignore
+                if is_console_format(state.current_track):
+                    still_loaded = False
+                elif hasattr(self.audio, "async_current_song"):
                     still_loaded = bool(await self.audio.async_current_song())
                 elif hasattr(self.audio, "current_song"):
                     still_loaded = bool(self.audio.current_song())
                 else:
                     still_loaded = bool(self.audio.song_length())
-                grace = 8 if is_console_format(state.current_track) else 1
+                grace = 2 if is_console_format(state.current_track) else 1
                 should_advance, self._not_playing_since = should_advance_after_stop(
                     self._not_playing_since, now, grace, still_loaded=still_loaded
                 )
