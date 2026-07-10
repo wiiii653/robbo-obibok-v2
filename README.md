@@ -21,7 +21,7 @@ Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-gard
 
 ## What's New in v2
 
-Complete rewrite with a **flat, minimal architecture** — 24 source modules instead of 76, 230+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
+Complete rewrite with a **flat, minimal architecture** — 23 source modules instead of 76, 270+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
 
 ## Features
 
@@ -33,7 +33,6 @@ Complete rewrite with a **flat, minimal architecture** — 24 source modules ins
 - 🔄 **Auto-advance** — moves to next track when current ends, with chiptune-aware monitoring
 - 🧩 **Subsong playback** — demoscene/module tracks advance through embedded parts
 - 💾 **Queue persistence** — restores compatible queues across restarts
-- 🌐 **Remote playback cache** — direct URLs are downloaded into `var/downloads/` before playback
 - 📻 **Auto-start** — starts playing when someone joins a configured voice channel
 - 🌙 **Auto-stop** — disconnects after the channel is empty for `auto.empty_timeout`
 - 🛡️ **Playback lease + watchdog** — one guild owns playback at a time, with automatic audio recovery
@@ -47,7 +46,7 @@ Complete rewrite with a **flat, minimal architecture** — 24 source modules ins
 |---------|-------------|
 | **Playback** | |
 | `!play` / `!pl` / `!radio` / `!start` | Start shuffled radio from current collection |
-| `!play <query>` | Search, or play a direct URL, and immediately start the first match |
+| `!play <query>` | Search and immediately start the first match |
 | `!play <number>` | Play a track from last search results |
 | `!stop` / `!st` | Stop playback and disconnect |
 | `!skip` / `!next` / `!nt` | Skip to next track |
@@ -102,7 +101,7 @@ React with **⭐ (star)** to a Now Playing embed to save the track to your favor
 | **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | ~550 | Local `archiwum/tiny/` |
 | **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 4 835 | Local `archiwum/kgen/` |
 
-Local archives are served from disk; remote URLs are cached before playback.
+All collections are served from disk.
 
 ## Quick Start
 
@@ -246,21 +245,11 @@ format_volumes:
   it: 115
 ```
 
-For production deployments, restrict remote playback to approved hosts:
-
-```yaml
-remote:
-  allowed_domains:
-    - youtube.com
-    - youtu.be
-    - modarchive.org
-```
-
 ## File Structure
 
 ```
 robbo-obibok-v2/
-├── src/                     # Source modules (24 files)
+├── src/                     # Source modules (23 files)
 │   ├── __init__.py
 │   ├── __main__.py          # python -m src entry point
 │   ├── audio.py             # PulseAudio + Audacious control
@@ -282,7 +271,6 @@ robbo-obibok-v2/
 │   ├── playback.py          # Playback orchestrator
 │   ├── playback_cog.py      # Playback commands (!play, !skip, etc.)
 │   ├── queue.py             # Queue shuffle, blacklist, persistence
-│   ├── remote.py            # Remote download + cache helpers
 │   ├── stream.py            # Voice stream source
 │   └── tools_cog.py         # Utility commands (!stats, !ocko, !help)
 ├── tests/                   # 230+ unit tests
