@@ -26,6 +26,7 @@ from .remote import (
     download_modarchive_module,
     download_remote_track,
     download_youtube_track,
+    is_allowed_remote_url,
     is_remote_track,
     is_youtube_url,
     remote_cache_path,
@@ -42,6 +43,7 @@ class PlaybackEngine:
     blacklist: Blacklist
     root_dir: str
     archive_root: str = "archiwum"
+    allowed_remote_domains: tuple[str, ...] = ()
     shuffle_queue: bool = True
     default_loop: bool = False
 
@@ -320,11 +322,27 @@ class PlaybackEngine:
         return Path(self.root_dir) / self.archive_root / col.archive_path / track
 
     async def _download_remote_track(self, state: PlaybackState, track: str) -> str | None:
+        if not is_allowed_remote_url(track, self.allowed_remote_domains):
+            logger.warning("Remote URL rejected by policy: %s", track)
+            return None
         if is_youtube_url(track):
-            return await asyncio.to_thread(download_youtube_track, track, self.root_dir)
+            return await asyncio.to_thread(
+                download_youtube_track,
+                track,
+                self.root_dir,
+                allowed_domains=self.allowed_remote_domains,
+            )
         if uses_module_cache(track):
             return await asyncio.to_thread(
-                download_modarchive_module, track, root_dir=self.root_dir
+                download_modarchive_module,
+                track,
+                root_dir=self.root_dir,
+                allowed_domains=self.allowed_remote_domains,
             )
         output_path = remote_cache_path(self.root_dir, track)
-        return await asyncio.to_thread(download_remote_track, track, output_path)
+        return await asyncio.to_thread(
+            download_remote_track,
+            track,
+            output_path,
+            allowed_domains=self.allowed_remote_domains,
+        )

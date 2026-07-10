@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.error import URLError
 
-from src.remote import download_remote_track, is_remote_track, remote_cache_path
+from src.remote import (
+    download_remote_track,
+    is_allowed_remote_url,
+    is_remote_track,
+    remote_cache_path,
+)
 
 
 def test_is_remote_track():
@@ -18,6 +23,17 @@ def test_is_remote_track():
 
 def test_is_remote_track_rejects_malformed_url():
     assert is_remote_track("https://[invalid") is False
+
+
+def test_remote_url_policy_enforces_allowlist_and_rejects_private_ips(monkeypatch):
+    monkeypatch.setattr(
+        "src.remote.socket.getaddrinfo",
+        lambda *args, **kwargs: [(0, 0, 0, "", ("93.184.216.34", 0))],
+    )
+    assert is_allowed_remote_url("https://example.com/song.mod", ("example.com",)) is True
+    assert is_allowed_remote_url("https://evil.example/song.mod", ("example.com",)) is False
+    assert is_allowed_remote_url("http://127.0.0.1/song.mod") is False
+    assert is_allowed_remote_url("http://[::1]/song.mod") is False
 
 
 def test_remote_cache_path_is_stable_and_sanitized(tmp_path):

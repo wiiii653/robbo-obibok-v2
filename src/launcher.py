@@ -79,6 +79,7 @@ def create_bot(config: AppConfig) -> ObibokBot:
         blacklist=blacklist,
         root_dir=root_dir,
         archive_root=config.archive_path,
+        allowed_remote_domains=config.remote.allowed_domains,
         shuffle_queue=config.playback.shuffle,
         default_loop=config.playback.loop,
     )

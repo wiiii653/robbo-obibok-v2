@@ -242,6 +242,16 @@ format_volumes:
   it: 115
 ```
 
+For production deployments, restrict remote playback to approved hosts:
+
+```yaml
+remote:
+  allowed_domains:
+    - youtube.com
+    - youtu.be
+    - modarchive.org
+```
+
 ## File Structure
 
 ```
