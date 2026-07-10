@@ -1,6 +1,6 @@
 # Robbo Obibok v2 — Makefile
 
-.PHONY: install run test lint format build-indexes clean help
+.PHONY: install run test check lint format build-indexes clean help
 
 SHELL := /bin/bash
 VENV  := venv
@@ -12,6 +12,7 @@ help:
 	@echo "  make install         # Full installation (venv + deps)"
 	@echo "  make run             # Start the bot"
 	@echo "  make test            # Run unit tests"
+	@echo "  make check           # Run tests, coverage, lint, and format checks"
 	@echo "  make lint            # Run ruff linter"
 	@echo "  make format          # Run ruff formatter"
 	@echo "  make build-indexes   # Build all local track indexes"
@@ -31,11 +32,17 @@ $(VENV)/bin/activate: pyproject.toml
 
 run: $(VENV)/bin/activate
 	@echo "Starting Robbo Obibok v2..."
-	@cd $(CURDIR) && PYTHONPATH=src $(PYTHON) -m src
+	@cd $(CURDIR) && PYTHONPATH=$(CURDIR) $(PYTHON) -m src
 
 test: $(VENV)/bin/activate
 	@echo "Running tests..."
-	@cd $(CURDIR) && PYTHONPATH=src $(PYTHON) -m pytest tests/ -v
+	@cd $(CURDIR) && PYTHONPATH=$(CURDIR) $(PYTHON) -m pytest tests/ -v
+
+check: $(VENV)/bin/activate
+	@echo "Running project checks..."
+	@cd $(CURDIR) && PYTHONPATH=$(CURDIR) $(VENV)/bin/ruff check src/ tests/ scripts/
+	@cd $(CURDIR) && PYTHONPATH=$(CURDIR) $(VENV)/bin/ruff format --check src/ tests/ scripts/
+	@cd $(CURDIR) && PYTHONPATH=$(CURDIR) $(PYTHON) -m pytest tests/ --cov=src --cov-report=term-missing
 
 lint: $(VENV)/bin/activate
 	@echo "Running ruff checks..."

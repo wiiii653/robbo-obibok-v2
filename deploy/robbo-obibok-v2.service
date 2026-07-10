@@ -1,17 +1,23 @@
 [Unit]
-Description=Robbo Obibok v2 — Discord Chiptune Radio (parallel)
+Description=Robbo Obibok v2 — Discord Chiptune Radio
 Documentation=https://github.com/wiiii653/robbo-obibok-v2
+After=network-online.target sound.target
+Wants=network-online.target
 
 [Service]
 Type=simple
+User=boruta
+Group=boruta
 WorkingDirectory=/home/boruta/robbo-obibok-v2
 EnvironmentFile=/home/boruta/robbo-obibok-v2/.env
-ExecStartPre=/bin/bash -c 'if [ -f obibok.pid ]; then kill $(cat obibok.pid) 2>/dev/null || true; fi'
+Environment=PYTHONPATH=/home/boruta/robbo-obibok-v2
 ExecStart=/home/boruta/robbo-obibok-v2/venv/bin/python3 -u -m src
 Restart=on-failure
 RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

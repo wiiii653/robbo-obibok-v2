@@ -41,7 +41,9 @@ def _normalize_playlist_record(data: object) -> dict | None:
     tracks = data.get("tracks", [])
     if not isinstance(tracks, list):
         return None
-    normalized_tracks = [item for item in (_normalize_track_entry(track) for track in tracks) if item]
+    normalized_tracks = [
+        item for item in (_normalize_track_entry(track) for track in tracks) if item
+    ]
     return {
         "name": data.get("name", ""),
         "author": data.get("author", ""),
@@ -66,7 +68,9 @@ class Favorites:
             for key, value in raw.items():
                 if not isinstance(value, list):
                     continue
-                tracks = [item for item in (_normalize_track_entry(entry) for entry in value) if item]
+                tracks = [
+                    item for item in (_normalize_track_entry(entry) for entry in value) if item
+                ]
                 # Dedup by filepath — keep last entry per unique filepath
                 seen: set[str] = set()
                 deduped: list[dict] = []
@@ -118,13 +122,15 @@ class Favorites:
         tracks = self._data.setdefault(uid, [])
         if index is not None:
             return False
-        tracks.append({
-            "filepath": filepath,
-            "title": title,
-            "author": author,
-            "collection_id": collection_id,
-            "added_at": time.time(),
-        })
+        tracks.append(
+            {
+                "filepath": filepath,
+                "title": title,
+                "author": author,
+                "collection_id": collection_id,
+                "added_at": time.time(),
+            }
+        )
         self._save()
         return True
 
@@ -208,10 +214,12 @@ class PlaylistLibrary:
             normalized = _normalize_playlist_record(data)
             if not normalized:
                 continue
-            playlists.append({
-                "name": normalized.get("name", filepath.stem) or filepath.stem,
-                "author": normalized.get("author", "?") or "?",
-                "tracks": len(normalized.get("tracks", [])),
-                "created": normalized.get("created", 0),
-            })
+            playlists.append(
+                {
+                    "name": normalized.get("name", filepath.stem) or filepath.stem,
+                    "author": normalized.get("author", "?") or "?",
+                    "tracks": len(normalized.get("tracks", [])),
+                    "created": normalized.get("created", 0),
+                }
+            )
         return playlists

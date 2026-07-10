@@ -129,6 +129,7 @@ class TestBlacklistLogic:
 class TestCollectionLogic:
     def test_flip(self, tmp_path):
         from src.collection_loader import flip_collection
+
         assert flip_collection("asma") == "modarchive"
         assert flip_collection("kgen") == "hvsc"
 

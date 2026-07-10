@@ -16,6 +16,7 @@ from .favorites import PlaylistLibrary
 if TYPE_CHECKING:
     from .bot import ObibokBot
 
+
 class FavoritesCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
@@ -62,6 +63,7 @@ class FavoritesCog(commands.Cog):
             else:
                 self.bot.release_lease(ctx.guild.id)
                 await ctx.send(f"{failure_prefix}: {exc}")
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if str(payload.emoji) != FAVORITE_EMOJI:
@@ -81,7 +83,7 @@ class FavoritesCog(commands.Cog):
         raw_title = meta.get("NAME", "") or ""
         # Strip non-printable chars from metadata (SID/SAP headers often contain binary prefixes)
         if raw_title:
-            raw_title = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', raw_title).strip()
+            raw_title = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", raw_title).strip()
         if not raw_title:
             filepath = msg_data["filepath"]
             # ModArchive download URLs have no real filename — extract module ID
@@ -92,7 +94,7 @@ class FavoritesCog(commands.Cog):
                 raw_title = filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ")
         self.bot.engine.favorites.add(
             payload.user_id,
-            msg_data['filepath'],
+            msg_data["filepath"],
             raw_title,
             collection_id,
             meta.get("AUTHOR", "") or "",
@@ -118,14 +120,16 @@ class FavoritesCog(commands.Cog):
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
         if not tracks:
-            return await ctx.send("📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!")
+            return await ctx.send(
+                "📭 **No favorites yet.** React to a Now Playing embed with any emoji to save tracks here!"
+            )
         lines = [f"🎵 **Your Favorites ({len(tracks)} tracks)**"]
-        _clean_re = re.compile(r'[\x00-\x1f\x7f-\x9f]')
+        _clean_re = re.compile(r"[\x00-\x1f\x7f-\x9f]")
         bad_titles_fixed = 0
         for i, t in enumerate(tracks, 1):
             name = t.get("title", "")
             if name:
-                name = _clean_re.sub('', name).strip()
+                name = _clean_re.sub("", name).strip()
             # Repair tracks that have missing or placeholder titles
             # (download.php URLs stored without proper metadata, etc.)
             if not name or name.lower() in ("downloads", "download", "untitled", "unknown", "tmp"):
@@ -139,7 +143,7 @@ class FavoritesCog(commands.Cog):
                     )
                     name = meta.get("NAME", "")
                     if name:
-                        name = _clean_re.sub('', name).strip()
+                        name = _clean_re.sub("", name).strip()
                     if name:
                         self.bot.engine.favorites.set_track_metadata(
                             ctx.author.id, t["filepath"], name, meta.get("AUTHOR", "")
@@ -158,7 +162,7 @@ class FavoritesCog(commands.Cog):
         for i, chunk_start in enumerate(range(0, len(lines), 15)):
             if i > 0:
                 await asyncio.sleep(0.5)
-            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
+            await ctx.send("\n".join(lines[chunk_start : chunk_start + 15]))
 
     @commands.command(aliases=["fp"])
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
@@ -166,7 +170,9 @@ class FavoritesCog(commands.Cog):
             return await ctx.send("Join a voice channel first!")
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         if not tracks:
-            return await ctx.send("📭 **No favorites yet.** React to any Now Playing embed with an emoji to save tracks!")
+            return await ctx.send(
+                "📭 **No favorites yet.** React to any Now Playing embed with an emoji to save tracks!"
+            )
         if number:
             try:
                 idx = int(number) - 1
@@ -209,13 +215,15 @@ class FavoritesCog(commands.Cog):
     async def blks(self, ctx: commands.Context) -> None:
         tracks = self.bot.engine.blacklist.get_tracks(ctx.author.id)
         if not tracks:
-            return await ctx.send("📭 **No blacklisted tracks.** Use `!blk` on a playing track to add it here.")
+            return await ctx.send(
+                "📭 **No blacklisted tracks.** Use `!blk` on a playing track to add it here."
+            )
         lines = [f"⛔ **Your Blacklist ({len(tracks)} tracks)**"]
         for i, t in enumerate(tracks, 1):
             name = t.rsplit("/", 1)[-1] if "/" in t else t
             lines.append(f"`{i}.` {name}")
         for chunk_start in range(0, len(lines), 15):
-            await ctx.send("\n".join(lines[chunk_start:chunk_start + 15]))
+            await ctx.send("\n".join(lines[chunk_start : chunk_start + 15]))
 
     @commands.command()
     async def blkrm(self, ctx: commands.Context, index: int) -> None:
@@ -240,10 +248,12 @@ class FavoritesCog(commands.Cog):
             lib = PlaylistLibrary(self.bot.root_dir)
             playlists = lib.list_playlists()
             if not playlists:
-                return await ctx.send("📂 **No playlists saved yet.** Use `!favsave <name>` to create one!")
+                return await ctx.send(
+                    "📂 **No playlists saved yet.** Use `!favsave <name>` to create one!"
+                )
             lines = ["📂 **Saved Playlists**"]
             for p in playlists:
-                author_s = f" by {p['author']}" if p['author'] != "?" else ""
+                author_s = f" by {p['author']}" if p["author"] != "?" else ""
                 lines.append(f"`{p['name']}` — {p['tracks']} tracks{author_s}")
             return await ctx.send("\n".join(lines))
         if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:

@@ -46,12 +46,18 @@ class TestQueueEmbed:
         assert "empty" in embed["description"].lower()
 
     def test_pagination(self):
-        queue = [{"index": i, "path": f"t{i}.sap", "filename": f"t{i}.sap", "is_current": False} for i in range(25)]
+        queue = [
+            {"index": i, "path": f"t{i}.sap", "filename": f"t{i}.sap", "is_current": False}
+            for i in range(25)
+        ]
         embed = queue_embed(queue, 0, page=0, per_page=10)
         assert "Page 1/3" in embed["footer"]["text"]
 
     def test_page_2(self):
-        queue = [{"index": i, "path": f"t{i}.sap", "filename": f"t{i}.sap", "is_current": False} for i in range(15)]
+        queue = [
+            {"index": i, "path": f"t{i}.sap", "filename": f"t{i}.sap", "is_current": False}
+            for i in range(15)
+        ]
         embed = queue_embed(queue, 10, page=1, per_page=10)
         assert "Page 2/2" in embed["footer"]["text"]
 

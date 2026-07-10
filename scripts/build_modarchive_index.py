@@ -35,11 +35,13 @@ def main() -> None:
                 full = Path(root) / f
                 rel = str(full.relative_to(ARCHIVIUM))
                 size = os.path.getsize(full)
-                entries.append({
-                    "path": rel,
-                    "name": f.rsplit(".", 1)[0],
-                    "size": size,
-                })
+                entries.append(
+                    {
+                        "path": rel,
+                        "name": f.rsplit(".", 1)[0],
+                        "size": size,
+                    }
+                )
                 total += 1
 
     cache = {"version": 1, "total": total, "tracks": entries}

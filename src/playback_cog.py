@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class PlaybackCog(commands.Cog):
     def __init__(self, bot: ObibokBot) -> None:
         self.bot: ObibokBot = bot
@@ -60,7 +61,11 @@ class PlaybackCog(commands.Cog):
                         channel,
                         failure_prefix="Auto-reconnect failed",
                     )
-                    logger.info("Auto-reconnect: resumed playback for %d users in %s", len(members), channel.name)
+                    logger.info(
+                        "Auto-reconnect: resumed playback for %d users in %s",
+                        len(members),
+                        channel.name,
+                    )
                     return
                 except Exception as exc:
                     logger.warning("Auto-reconnect failed: %s", exc)
@@ -96,7 +101,9 @@ class PlaybackCog(commands.Cog):
                         except Exception as exc:
                             logger.warning("Voice reconnect failed for guild %s: %s", guild_id, exc)
 
-    async def _can_control_audio(self, ctx: commands.Context, *, require_owner: bool = False) -> bool:
+    async def _can_control_audio(
+        self, ctx: commands.Context, *, require_owner: bool = False
+    ) -> bool:
         if not ctx.guild:
             return False
         owner_id = self.bot.playback_lease.owner_guild_id
@@ -109,7 +116,9 @@ class PlaybackCog(commands.Cog):
             return False
         return True
 
-    def _set_queue(self, state: PlaybackState, queued: list[tuple[str, str]], *, shuffle: bool = False) -> None:
+    def _set_queue(
+        self, state: PlaybackState, queued: list[tuple[str, str]], *, shuffle: bool = False
+    ) -> None:
         if shuffle:
             random.shuffle(queued)
         state.queue = [filepath for filepath, _ in queued]
@@ -117,7 +126,9 @@ class PlaybackCog(commands.Cog):
         state.position = 0
         state.is_looping = self.bot.default_loop
 
-    async def _finish_playback(self, ctx: commands.Context, state: PlaybackState, message: str) -> None:
+    async def _finish_playback(
+        self, ctx: commands.Context, state: PlaybackState, message: str
+    ) -> None:
         guild_id = ctx.guild.id if ctx.guild else None
         try:
             await self.bot.engine.stop(state)
@@ -156,7 +167,9 @@ class PlaybackCog(commands.Cog):
             await self._finish_playback(ctx, state, f"{failure_prefix}: {exc}")
 
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
+    async def on_voice_state_update(
+        self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState
+    ) -> None:
         # Handle bot's own voice reconnect — restart stream if we were playing.
         if self.bot.user and member.bot and member.id == self.bot.user.id:
             logger.debug("Bot voice state: %s → %s", before.channel, after.channel)
@@ -203,7 +216,9 @@ class PlaybackCog(commands.Cog):
                 self.bot.release_lease(member.guild.id)
                 return
             ctx = PlaybackCtx(member.guild, member, None, after.channel.send)
-            await self._connect_and_play(ctx, state, after.channel, failure_prefix="Auto-start failed")
+            await self._connect_and_play(
+                ctx, state, after.channel, failure_prefix="Auto-start failed"
+            )
         except Exception as exc:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(member.guild.id)
@@ -247,7 +262,9 @@ class PlaybackCog(commands.Cog):
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(query, state.collection_mode)])
             await self._connect_and_play(
-                ctx, state, voice_channel,
+                ctx,
+                state,
+                voice_channel,
                 start_message="Starting remote track...",
                 failure_prefix="Failed to play remote track",
             )
@@ -262,13 +279,16 @@ class PlaybackCog(commands.Cog):
                 owner = self.bot.playback_lease.owner_guild_name or "another server"
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
             from .audio import _is_sap_supported
+
             supported, reason = _is_sap_supported(path)
             if not supported:
                 return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
             self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
             await self._connect_and_play(
-                ctx, state, voice_channel,
+                ctx,
+                state,
+                voice_channel,
                 failure_prefix="Failed to play selection",
             )
             return
@@ -286,7 +306,9 @@ class PlaybackCog(commands.Cog):
             state.search_collection_id = state.collection_mode
             self._set_queue(state, [(path, state.collection_mode) for path in results])
             await self._connect_and_play(
-                ctx, state, voice_channel,
+                ctx,
+                state,
+                voice_channel,
                 start_message=f"Starting search result for `{query}`...",
                 failure_prefix="Failed to play search result",
             )
@@ -305,9 +327,13 @@ class PlaybackCog(commands.Cog):
                 self.bot.release_lease(ctx.guild.id)
                 if ctx.voice_client:
                     await ctx.voice_client.disconnect()
-                return await ctx.send("No tracks in this collection. Run `make build-indexes` first.")
+                return await ctx.send(
+                    "No tracks in this collection. Run `make build-indexes` first."
+                )
             await self._connect_and_play(
-                ctx, state, voice_channel,
+                ctx,
+                state,
+                voice_channel,
                 start_message=f"Starting **{state.collection_mode.upper()}** radio...",
                 failure_prefix="Failed to start playback",
             )
@@ -370,7 +396,10 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         if not state.history:
             return await ctx.send("No history yet.")
-        lines = [f"`{i+1}.` `{h.rsplit('/', 1)[-1]}`" for i, h in enumerate(reversed(state.history[-10:]))]
+        lines = [
+            f"`{i + 1}.` `{h.rsplit('/', 1)[-1]}`"
+            for i, h in enumerate(reversed(state.history[-10:]))
+        ]
         await ctx.send("\n".join(lines))
 
     @commands.command()
@@ -446,7 +475,7 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         if not state.queue:
             return await ctx.send("Queue empty.")
-        lines = [f"{i+1}. {t.rsplit('/', 1)[-1]}" for i, t in enumerate(state.queue)]
+        lines = [f"{i + 1}. {t.rsplit('/', 1)[-1]}" for i, t in enumerate(state.queue)]
         text = "\n".join(lines)
         if len(text) > 1900:
             text = text[:1900] + "\n..."
@@ -458,7 +487,9 @@ class PlaybackCog(commands.Cog):
         if not ctx.voice_client:
             return await self._finish_playback(ctx, state, "Voice connection unavailable.")
 
-        self.bot._playback_sessions[ctx.guild.id] = self.bot._playback_sessions.get(ctx.guild.id, 0) + 1
+        self.bot._playback_sessions[ctx.guild.id] = (
+            self.bot._playback_sessions.get(ctx.guild.id, 0) + 1
+        )
 
         self.bot._cancel_monitor(ctx.guild.id)
         self.bot._cancel_predownload(ctx.guild.id)
@@ -507,7 +538,11 @@ class PlaybackCog(commands.Cog):
                 if next_t == prev_track:
                     _stuck_count += 1
                     if _stuck_count >= 3:
-                        logger.warning("Track stuck after %d timeouts, force-skipping: %s", _stuck_count, prev_track)
+                        logger.warning(
+                            "Track stuck after %d timeouts, force-skipping: %s",
+                            _stuck_count,
+                            prev_track,
+                        )
                         _stuck_count = 0
                         s.is_looping = False
                         # Advance past the stuck track
@@ -548,7 +583,9 @@ class PlaybackCog(commands.Cog):
 
         async def run_monitor() -> None:
             try:
-                await self.bot.monitor.monitor_loop(state, on_track_end, on_empty, get_voice_members)
+                await self.bot.monitor.monitor_loop(
+                    state, on_track_end, on_empty, get_voice_members
+                )
             finally:
                 current = self.bot._monitor_tasks.get(guild_id)
                 if current is asyncio.current_task():
@@ -556,7 +593,9 @@ class PlaybackCog(commands.Cog):
 
         self.bot._monitor_tasks[guild_id] = asyncio.create_task(run_monitor())
 
-    async def _send_now_playing(self, ctx: commands.Context, state: PlaybackState, *, skip_dedup: bool = False) -> None:
+    async def _send_now_playing(
+        self, ctx: commands.Context, state: PlaybackState, *, skip_dedup: bool = False
+    ) -> None:
         if not skip_dedup:
             # Dedup: skip if same track+position was sent in the last 5 seconds
             key = (state.current_track, state.position)
@@ -586,8 +625,11 @@ class PlaybackCog(commands.Cog):
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         if msg is None:
             return
-        self.bot._track_np_message(msg.id, {
-            "filepath": state.current_track,
-            "collection_id": collection_id,
-        })
+        self.bot._track_np_message(
+            msg.id,
+            {
+                "filepath": state.current_track,
+                "collection_id": collection_id,
+            },
+        )
         await msg.add_reaction(FAVORITE_EMOJI)

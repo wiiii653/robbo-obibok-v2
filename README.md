@@ -157,6 +157,7 @@ Development checks:
 
 ```bash
 make test        # Unit tests
+make check       # Tests, coverage, lint, and formatting checks
 make lint        # Ruff linter
 make format      # Ruff formatter
 ```
@@ -174,21 +175,19 @@ make format      # Ruff formatter
 Run as a background service:
 
 ```bash
-# Copy the service file
-mkdir -p ~/.config/systemd/user
-cp deploy/robbo-obibok.service ~/.config/systemd/user/
+# Install the system service
+sudo cp deploy/robbo-obibok.service /etc/systemd/system/
 
 # Store token in the environment file used by the service
 printf 'DISCORD_BOT_TOKEN="%s"\n' "YOUR_TOKEN_HERE" > ~/robbo-obibok-v2/.env
 chmod 600 ~/robbo-obibok-v2/.env
 
 # Enable and start
-systemctl --user daemon-reload
-systemctl --user enable robbo-obibok
-systemctl --user start robbo-obibok
+sudo systemctl daemon-reload
+sudo systemctl enable --now robbo-obibok
 
 # Check logs
-journalctl --user -u robbo-obibok -f
+sudo journalctl -u robbo-obibok -f
 ```
 
 ## Building Local Indexes

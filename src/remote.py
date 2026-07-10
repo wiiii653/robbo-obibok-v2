@@ -6,14 +6,21 @@ import hashlib
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
 import yt_dlp
 
-YOUTUBE_DOMAINS = {"youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com",
-                   "music.youtube.com", "youtube-nocookie.com"}
+YOUTUBE_DOMAINS = {
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtube-nocookie.com",
+}
 MAX_YOUTUBE_DURATION_SECONDS = 3600  # 1h max
 YOUTUBE_CACHE_TTL_SECONDS = 86400 * 7  # 7 dni cache
 
@@ -25,7 +32,11 @@ MAX_MODULE_DOWNLOAD_BYTES = 64 * 1024 * 1024
 
 
 def is_remote_track(track: str) -> bool:
-    return track.startswith("http://") or track.startswith("https://")
+    try:
+        parsed = urlparse(track)
+        return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+    except ValueError:
+        return False
 
 
 def is_youtube_url(url: str) -> bool:
@@ -49,15 +60,20 @@ def download_youtube_track(url: str, root_dir: str) -> str | None:
             vid = info.get("id", "")
             dur = info.get("duration", 0) or 0
             if dur > MAX_YOUTUBE_DURATION_SECONDS:
-                logger.warning("YouTube track too long: %ds (max %ds)", dur, MAX_YOUTUBE_DURATION_SECONDS)
+                logger.warning(
+                    "YouTube track too long: %ds (max %ds)", dur, MAX_YOUTUBE_DURATION_SECONDS
+                )
                 return None
             title = info.get("title", "unknown")
             # Check cache first
             for ext_candidate in ("m4a", "webm", "mp3", "ogg"):
                 cached = youtube_cache_path(root_dir, vid, ext_candidate)
-                if Path(cached).is_file() and Path(cached).stat().st_size > 0:
-                    logger.info("YouTube cache hit: %s (%s)", cached, title)
-                    return cached
+                cached_path = Path(cached)
+                if cached_path.is_file() and cached_path.stat().st_size > 0:
+                    age = max(0, time.time() - cached_path.stat().st_mtime)
+                    if age <= YOUTUBE_CACHE_TTL_SECONDS:
+                        logger.info("YouTube cache hit: %s (%s)", cached, title)
+                        return cached
             # Download best audio
             output_tmpl = str(Path(root_dir) / "var" / "downloads" / "youtube" / f"{vid}.%(ext)s")
             ydl_opts = {
@@ -86,8 +102,10 @@ def download_youtube_track(url: str, root_dir: str) -> str | None:
 
 def uses_module_cache(url: str) -> bool:
     path = unquote(urlparse(url).path).lower()
-    return "modarchive" in url.lower() or "moduleid=" in url.lower() or path.endswith(
-        (".mod", ".xm", ".s3m", ".it")
+    return (
+        "modarchive" in url.lower()
+        or "moduleid=" in url.lower()
+        or path.endswith((".mod", ".xm", ".s3m", ".it"))
     )
 
 
@@ -117,10 +135,21 @@ def _cache_dir(root_dir: str, *parts: str) -> Path:
 def _download_bytes(url: str, *, max_bytes: int, timeout: int = DEFAULT_REMOTE_TIMEOUT) -> bytes:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(request, timeout=timeout) as response:
-        data = response.read(max_bytes + 1)
-    if len(data) > max_bytes:
-        raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
-    return data
+        headers = getattr(response, "headers", {})
+        content_length = headers.get("Content-Length")
+        if content_length and int(content_length) > max_bytes:
+            raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = response.read(min(1024 * 1024, max_bytes - total + 1))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
+    return b"".join(chunks)
 
 
 def _valid_cached_file(path: Path) -> bool:
@@ -134,7 +163,9 @@ def _write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as temp:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as temp:
             temp.write(data)
             temp.flush()
             os.fsync(temp.fileno())
@@ -145,7 +176,9 @@ def _write_atomic(path: Path, data: bytes) -> None:
             Path(temp_path).unlink(missing_ok=True)
 
 
-def download_remote_track(url: str, output_path: str, *, timeout: int = DEFAULT_REMOTE_TIMEOUT) -> str:
+def download_remote_track(
+    url: str, output_path: str, *, timeout: int = DEFAULT_REMOTE_TIMEOUT
+) -> str:
     path = Path(output_path)
     if _valid_cached_file(path):
         return output_path
@@ -161,7 +194,9 @@ def download_modarchive_module(url: str, *, root_dir: str) -> str:
     cache_dir = _cache_dir(root_dir, "modarchive")
     if mod_id:
         for cached in cache_dir.iterdir():
-            if (cached.name.startswith(f"{mod_id}_") or cached.name == mod_id) and _valid_cached_file(cached):
+            if (
+                cached.name.startswith(f"{mod_id}_") or cached.name == mod_id
+            ) and _valid_cached_file(cached):
                 return str(cached)
     parsed = urlparse(url)
     stem = Path(unquote(parsed.path)).stem or mod_id or "module"

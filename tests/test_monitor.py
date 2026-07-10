@@ -73,6 +73,7 @@ class TestMonitorHelpers:
         assert advance is True
         assert since is None
 
+
 class TestTrackMonitor:
     def test_monitor_creation(self):
         audio = type("MockAudio", (), {"is_playing": lambda: True})()
@@ -82,14 +83,22 @@ class TestTrackMonitor:
     @pytest.mark.asyncio
     async def test_monitor_tick_detects_track_end(self):
 
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: False,
-            "output_length": lambda self=None: 0,
-            "song_length": lambda self=None: 0,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: False,
+                "output_length": lambda self=None: 0,
+                "song_length": lambda self=None: 0,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
 
-        state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
+        state = type(
+            "State",
+            (),
+            {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0},
+        )()
         ended = []
 
         async def on_end(s):
@@ -105,11 +114,15 @@ class TestTrackMonitor:
 
     @pytest.mark.asyncio
     async def test_monitor_cancels(self):
-        audio = type("MockAudio", (), {
-            "is_playing": lambda: True,
-            "output_length": lambda: 5,
-            "song_length": lambda: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda: True,
+                "output_length": lambda: 5,
+                "song_length": lambda: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
 
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
@@ -131,11 +144,15 @@ class TestTrackMonitor:
 class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_not_playing_returns_early(self):
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: False,
-            "output_length": lambda self=None: 0,
-            "song_length": lambda self=None: 0,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: False,
+                "output_length": lambda self=None: 0,
+                "song_length": lambda self=None: 0,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         state = type("State", (), {"is_playing": False, "current_track": "test.sap"})()
         called = []
@@ -149,17 +166,25 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_timeout_detection(self):
         """Console format without known song length uses wall-clock timeout."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 9999,
-            "song_length": lambda self=None: 0,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 9999,
+                "song_length": lambda self=None: 0,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         # Simulate track started 200s ago so wall-clock fires at CONSOLE_TIMEOUT_UNKNOWN=180
         monitor._track_started_at = asyncio.get_running_loop().time() - 200
         monitor._last_track = "test.sap"  # prevent track-change reset
         monitor._was_playing = True  # simulate already-playing state
-        state = type("State", (), {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0})()
+        state = type(
+            "State",
+            (),
+            {"is_playing": True, "current_track": "test.sap", "queue": ["test.sap"], "position": 0},
+        )()
         ended = []
 
         async def on_end(s):
@@ -172,15 +197,23 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_output_reset_detection(self):
         """When output_length resets (new track started on same track), detect as track end."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 5,
-            "song_length": lambda self=None: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 5,
+                "song_length": lambda self=None: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         monitor._last_output = 10  # simulate output decreasing = new track start
         monitor._last_track = "test.mod"  # same track so no track-change reset
-        state = type("State", (), {"is_playing": True, "current_track": "test.mod", "queue": ["test.mod"], "position": 0})()
+        state = type(
+            "State",
+            (),
+            {"is_playing": True, "current_track": "test.mod", "queue": ["test.mod"], "position": 0},
+        )()
         ended = []
 
         async def on_end(s):
@@ -193,11 +226,15 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_empty_channel(self):
         """When voice channel has no members, trigger on_empty."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 10,
-            "song_length": lambda self=None: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 10,
+                "song_length": lambda self=None: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
         emptied = []
@@ -213,11 +250,15 @@ class TestMonitorTickBranches:
 
     @pytest.mark.asyncio
     async def test_tick_empty_channel_waits_for_timeout(self):
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 10,
-            "song_length": lambda self=None: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 10,
+                "song_length": lambda self=None: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio, empty_timeout=5)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
         emptied = []
@@ -239,11 +280,15 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_elapsed_negative(self):
         """When output_length returns -1, function should return early."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: -1,
-            "song_length": lambda self=None: 0,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: -1,
+                "song_length": lambda self=None: 0,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
         ended = []
@@ -256,11 +301,15 @@ class TestMonitorTickBranches:
 
     @pytest.mark.asyncio
     async def test_empty_channel_checked_when_audio_telemetry_fails(self):
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: -1,
-            "song_length": lambda self=None: 0,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: -1,
+                "song_length": lambda self=None: 0,
+            },
+        )()
         monitor = TrackMonitor(audio=audio, empty_timeout=0)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
         emptied = []
@@ -277,11 +326,15 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_tick_track_change_resets_output(self):
         """When current track changes, _last_output resets to avoid false track end."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 30,
-            "song_length": lambda self=None: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 30,
+                "song_length": lambda self=None: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         monitor._last_output = 50
         monitor._last_track = "old.sap"
@@ -300,11 +353,15 @@ class TestMonitorTickBranches:
     @pytest.mark.asyncio
     async def test_monitor_loop_runs_ticks(self):
         """Monitor loop runs ticks until cancelled without error."""
-        audio = type("MockAudio", (), {
-            "is_playing": lambda self=None: True,
-            "output_length": lambda self=None: 5,
-            "song_length": lambda self=None: 100,
-        })()
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 5,
+                "song_length": lambda self=None: 100,
+            },
+        )()
         monitor = TrackMonitor(audio=audio)
         state = type("State", (), {"is_playing": True, "current_track": "test.sap"})()
 

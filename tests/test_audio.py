@@ -11,7 +11,13 @@ from src.audio import (
     FORMAT_VOLUMES,
     SUPPORTED_AUDACIOUS_VERSION,
     AudioController,
+    _get_ay_max_track,
+    _get_sap_songs_count,
+    _get_sap_time_seconds,
+    _get_sid_songs_count,
+    _parse_sap_time,
     check_audacious_version,
+    disable_repeat,
     get_audacious_version,
     get_volume,
     is_playing,
@@ -20,12 +26,6 @@ from src.audio import (
     play_file,
     set_volume,
     song_length,
-    _parse_sap_time,
-    _get_sap_time_seconds,
-    _get_sap_songs_count,
-    _get_ay_max_track,
-    _get_sid_songs_count,
-    disable_repeat,
 )
 
 
@@ -55,9 +55,7 @@ class TestFormatVolumes:
 class TestVolumeControl:
     @patch("src.audio.subprocess.run")
     def test_get_volume(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="Volume: front-left: 80 /  80%"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="Volume: front-left: 80 /  80%")
         vol = get_volume("test_sink")
         assert vol == 80
 
@@ -136,9 +134,10 @@ class TestPlayFile:
         result = play_file("test.sap", "test_sink")
         assert result is True
 
+    @patch("src.audio._is_audacious_alive", return_value=True)
     @patch("src.audio._audtool_call")
     @patch("src.audio._audacious_ready", True)
-    def test_play_file_failure(self, mock_audtool):
+    def test_play_file_failure(self, mock_audtool, mock_alive):
         mock_audtool.side_effect = [True, True, True] + [False] * 10 + [True]
         result = play_file("test.sap", "test_sink")
         assert result is False
@@ -192,6 +191,7 @@ class TestSinkManagement:
     def test_setup_sink_exists(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="robbo_test_sink")
         from src.audio import setup_sink
+
         assert setup_sink("robbo_test_sink") is True
         mock_run.assert_called_once()
 
@@ -202,6 +202,7 @@ class TestSinkManagement:
             MagicMock(returncode=0),
         ]
         from src.audio import setup_sink
+
         assert setup_sink("robbo_test_sink") is True
         assert mock_run.call_count == 2
 
@@ -240,8 +241,11 @@ Sink Input #42
 class TestPlayerLifecycle:
     @patch("src.audio.time.sleep", return_value=None)
     @patch("src.audio.subprocess.Popen")
+    @patch("src.audio.kill_player")
     @patch("src.audio.get_audacious_version")
-    def test_start_player_cleans_up_on_timeout(self, mock_version, mock_popen, mock_sleep):
+    def test_start_player_cleans_up_on_timeout(
+        self, mock_version, mock_kill, mock_popen, mock_sleep
+    ):
         proc = MagicMock()
         proc.poll.return_value = None
         mock_popen.return_value = proc
@@ -261,6 +265,7 @@ class TestPlayerLifecycle:
         mock_tool.return_value = True
         mock_run.return_value = MagicMock(returncode=0)
         from src.audio import kill_player
+
         kill_player()
         mock_tool.assert_any_call("playback-stop")
         mock_run.assert_called_once()
@@ -269,6 +274,7 @@ class TestPlayerLifecycle:
     def test_stop_playback(self, mock_tool):
         mock_tool.return_value = True
         from src.audio import stop_playback
+
         stop_playback()
         assert mock_tool.call_count == 2
 
@@ -290,6 +296,7 @@ class TestPlayerLifecycle:
         mock_start.return_value = True
         import src.audio
         from src.audio import ensure_audacious
+
         src.audio._audacious_ready = True
         ensure_audacious()
 
@@ -297,6 +304,7 @@ class TestPlayerLifecycle:
     def test_audtool_call_success(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
         from src.audio import _audtool_call
+
         assert _audtool_call("version") is True
         mock_run.assert_called_with(["audtool", "version"], capture_output=True, timeout=10)
 
@@ -304,12 +312,14 @@ class TestPlayerLifecycle:
     def test_audtool_call_failure(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)
         from src.audio import _audtool_call
+
         assert _audtool_call("version") is False
 
     @patch("src.audio.subprocess.run")
     def test_audtool_call_timeout(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired("audtool", 10)
         from src.audio import _audtool_call
+
         assert _audtool_call("version") is False
 
     @patch("src.audio.get_audacious_version")
@@ -318,6 +328,7 @@ class TestPlayerLifecycle:
         mock_run.return_value = MagicMock(returncode=0)
         mock_version.return_value = "4.6.1"
         from src.audio import _is_audacious_alive
+
         assert _is_audacious_alive() is True
 
     @patch("src.audio.get_audacious_version")
@@ -325,6 +336,7 @@ class TestPlayerLifecycle:
     def test_is_audacious_alive_false(self, mock_run, mock_version):
         mock_version.return_value = None
         from src.audio import _is_audacious_alive
+
         assert _is_audacious_alive() is False
 
     @patch("src.audio.subprocess.run")
@@ -347,18 +359,21 @@ class TestPlayerLifecycle:
 class TestAudioConfig:
     def test_set_volume_for_playback_sid(self):
         from src.audio import set_volume_for_playback
+
         with patch("src.audio.set_volume") as mock_set:
             set_volume_for_playback("track.sid", "test_sink")
-            mock_set.assert_called_with('test_sink', 115)
+            mock_set.assert_called_with("test_sink", 115)
 
     def test_set_volume_for_playback_other(self):
         from src.audio import set_volume_for_playback
+
         with patch("src.audio.set_volume") as mock_set:
             set_volume_for_playback("track.ay", "test_sink")
-            mock_set.assert_called_with('test_sink', 100)
+            mock_set.assert_called_with("test_sink", 100)
 
     def test_load_format_volumes_from_dict(self):
         from src.audio import FORMAT_VOLUMES, load_format_volumes_from_dict
+
         old = dict(FORMAT_VOLUMES)
         load_format_volumes_from_dict({"sid": 50, "sap": 75})
         assert FORMAT_VOLUMES["sid"] == 50
@@ -371,6 +386,7 @@ class TestAudioConfig:
     def test_enable_compressor(self, mock_tool):
         mock_tool.return_value = True
         from src.audio import enable_compressor
+
         enable_compressor()
         mock_tool.assert_called_with("plugin-enable", "compressor", "on")
 
@@ -378,6 +394,7 @@ class TestAudioConfig:
     def test_setup_sid_config(self, mock_tool):
         mock_tool.return_value = True
         from src.audio import setup_sid_config
+
         setup_sid_config()
         assert mock_tool.call_count == 3
 
@@ -440,25 +457,27 @@ class TestSapTimeParsing:
         assert _parse_sap_time("abc") is None
         assert _parse_sap_time("not_a_time") is None
 
-    def test_get_sap_time_seconds_real_files(self):
-        """Read real SAP files from the archive."""
-        base = "/home/boruta/robbo-obibok-v2/archiwum/asma"
+    def test_get_sap_time_seconds(self, tmp_path):
         cases = [
-            ("Composers/Husak_Jakub/Sweet_Dreams.sap", 200),
-            ("Composers/Esquivel_Sal/Crocketts_Theme.sap", 200),
-            ("Games/Milk_Race.sap", 250),
-            ("Games/Pooyan.sap", 34),
+            ("Sweet_Dreams.sap", "TIME 03:20\n", 200),
+            ("Crocketts_Theme.sap", "TIME 03:20\n", 200),
+            ("Milk_Race.sap", "SONGS 3\nTIME 01:20\nTIME 01:20\nTIME 01:30\n", 250),
+            ("Pooyan.sap", "SONGS 2\nTIME 00:17\nTIME 00:17\n", 34),
         ]
-        for rel_path, expected in cases:
-            got = _get_sap_time_seconds(f"{base}/{rel_path}")
-            assert got == expected, f"{rel_path}: expected {expected}, got {got}"
+        for filename, content, expected in cases:
+            filepath = tmp_path / filename
+            filepath.write_text(content)
+            assert _get_sap_time_seconds(str(filepath)) == expected
 
-    def test_get_sap_songs_count(self):
-        base = "/home/boruta/robbo-obibok-v2/archiwum/asma"
-        assert _get_sap_songs_count(f"{base}/Games/Milk_Race.sap") == 3
-        assert _get_sap_songs_count(f"{base}/Games/Pooyan.sap") == 2
+    def test_get_sap_songs_count(self, tmp_path):
+        filepath = tmp_path / "multi.sap"
+        filepath.write_text("SONGS 3\n")
+        assert _get_sap_songs_count(str(filepath)) == 3
+        filepath.write_text("SONGS 2\n")
+        assert _get_sap_songs_count(str(filepath)) == 2
         # Single-song SAP has no SONGS header
-        assert _get_sap_songs_count(f"{base}/Composers/Husak_Jakub/Sweet_Dreams.sap") is None
+        filepath.write_text("TIME 03:20\n")
+        assert _get_sap_songs_count(str(filepath)) is None
 
 
 class TestAyHeader:
@@ -482,8 +501,8 @@ class TestDisableRepeat:
     def test_disable_repeat_turns_off_when_on(self, mock_run):
         """Simulate repeat-status=on, toggle succeeds."""
         mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="on\n"),     # status check
-            MagicMock(returncode=0, stdout=""),           # toggle
+            MagicMock(returncode=0, stdout="on\n"),  # status check
+            MagicMock(returncode=0, stdout=""),  # toggle
         ]
         disable_repeat()
         assert mock_run.call_count >= 2

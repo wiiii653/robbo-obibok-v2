@@ -161,6 +161,7 @@ class TestPlaybackEngine:
         (tmp_path / "asma_cache_local.json").write_text(
             '{"tracks": [{"path": "first.sap"}, {"path": "second.sap"}]}'
         )
+
         def unexpected_shuffle(queue):
             raise AssertionError("shuffle must remain disabled")
 
