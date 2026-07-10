@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import os
+import socket
 import tempfile
 import time
 from pathlib import Path
 from urllib.error import URLError
-from urllib.parse import unquote, urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import unquote, urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import yt_dlp
 
@@ -32,6 +34,75 @@ DEFAULT_REMOTE_TIMEOUT = 30
 REMOTE_DOWNLOAD_ATTEMPTS = 3
 REMOTE_RETRY_DELAY_SECONDS = 1.0
 MAX_MODULE_DOWNLOAD_BYTES = 64 * 1024 * 1024
+
+
+def _normalized_domains(domains: tuple[str, ...] | list[str] | None) -> tuple[str, ...]:
+    return tuple(domain.strip().lower().lstrip(".") for domain in (domains or ()) if domain.strip())
+
+
+def _host_matches_allowlist(hostname: str, allowed_domains: tuple[str, ...]) -> bool:
+    return any(hostname == domain or hostname.endswith(f".{domain}") for domain in allowed_domains)
+
+
+def _is_public_hostname(hostname: str) -> bool:
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        try:
+            addresses = {
+                result[4][0]
+                for result in socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+            }
+        except OSError:
+            return False
+        return all(_is_public_hostname(address) for address in addresses)
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
+
+
+def is_allowed_remote_url(
+    url: str,
+    allowed_domains: tuple[str, ...] | list[str] | None = None,
+) -> bool:
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if parsed.scheme not in {"http", "https"} or not hostname:
+            return False
+        allowed = _normalized_domains(allowed_domains)
+        if allowed and not _host_matches_allowlist(hostname.lower(), allowed):
+            return False
+        if _is_public_hostname(hostname):
+            return True
+        # Hostname DNS resolution is intentionally skipped when no allowlist
+        # is configured to preserve offline/test behavior for arbitrary URLs.
+        return not allowed and not _looks_like_private_literal(hostname)
+    except ValueError:
+        return False
+
+
+def _looks_like_private_literal(hostname: str) -> bool:
+    try:
+        return not _is_public_ip(ipaddress.ip_address(hostname))
+    except ValueError:
+        return False
+
+
+def _is_public_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
 
 
 def is_remote_track(track: str) -> bool:
@@ -56,8 +127,16 @@ def youtube_cache_path(root_dir: str, video_id: str, ext: str = "m4a") -> str:
     return str(cache_dir / f"{video_id}.{ext}")
 
 
-def download_youtube_track(url: str, root_dir: str) -> str | None:
+def download_youtube_track(
+    url: str,
+    root_dir: str,
+    *,
+    allowed_domains: tuple[str, ...] | list[str] | None = None,
+) -> str | None:
     try:
+        if not is_allowed_remote_url(url, allowed_domains):
+            logger.warning("YouTube URL rejected by policy: %s", url)
+            return None
         with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             vid = info.get("id", "")
@@ -135,11 +214,35 @@ def _cache_dir(root_dir: str, *parts: str) -> Path:
     return path
 
 
-def _download_bytes(url: str, *, max_bytes: int, timeout: int = DEFAULT_REMOTE_TIMEOUT) -> bytes:
+def _download_bytes(
+    url: str,
+    *,
+    max_bytes: int,
+    timeout: int = DEFAULT_REMOTE_TIMEOUT,
+    allowed_domains: tuple[str, ...] | list[str] | None = None,
+) -> bytes:
+    if not is_allowed_remote_url(url, allowed_domains):
+        raise ValueError(f"remote URL rejected by policy: {url}")
+
+    allowed = _normalized_domains(allowed_domains)
+
+    class SafeRedirectHandler(HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, new_url):
+            resolved_url = urljoin(request.full_url, new_url)
+            if not is_allowed_remote_url(resolved_url, allowed):
+                raise ValueError(f"redirect rejected by policy: {resolved_url}")
+            return super().redirect_request(request, fp, code, msg, headers, resolved_url)
+
     for attempt in range(1, REMOTE_DOWNLOAD_ATTEMPTS + 1):
         try:
             request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urlopen(request, timeout=timeout) as response:
+            opener = build_opener(SafeRedirectHandler) if allowed else None
+            response_context = (
+                opener.open(request, timeout=timeout)
+                if opener
+                else urlopen(request, timeout=timeout)
+            )
+            with response_context as response:
                 headers = getattr(response, "headers", {})
                 content_length = headers.get("Content-Length")
                 if content_length and int(content_length) > max_bytes:
@@ -196,17 +299,31 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 def download_remote_track(
-    url: str, output_path: str, *, timeout: int = DEFAULT_REMOTE_TIMEOUT
+    url: str,
+    output_path: str,
+    *,
+    timeout: int = DEFAULT_REMOTE_TIMEOUT,
+    allowed_domains: tuple[str, ...] | list[str] | None = None,
 ) -> str:
     path = Path(output_path)
     if _valid_cached_file(path):
         return output_path
-    data = _download_bytes(url, max_bytes=MAX_REMOTE_DOWNLOAD_BYTES, timeout=timeout)
+    data = _download_bytes(
+        url,
+        max_bytes=MAX_REMOTE_DOWNLOAD_BYTES,
+        timeout=timeout,
+        allowed_domains=allowed_domains,
+    )
     _write_atomic(path, data)
     return output_path
 
 
-def download_modarchive_module(url: str, *, root_dir: str) -> str:
+def download_modarchive_module(
+    url: str,
+    *,
+    root_dir: str,
+    allowed_domains: tuple[str, ...] | list[str] | None = None,
+) -> str:
     mod_id = ""
     if "moduleid=" in url:
         mod_id = url.split("moduleid=", 1)[-1].split("&", 1)[0]
@@ -228,7 +345,11 @@ def download_modarchive_module(url: str, *, root_dir: str) -> str:
     output_path = cache_dir / f"{_sanitize_stem(stem)}-{digest}{suffix}"
     if _valid_cached_file(output_path):
         return str(output_path)
-    data = _download_bytes(url, max_bytes=MAX_MODULE_DOWNLOAD_BYTES)
+    data = _download_bytes(
+        url,
+        max_bytes=MAX_MODULE_DOWNLOAD_BYTES,
+        allowed_domains=allowed_domains,
+    )
     _write_atomic(output_path, data)
     if mod_id:
         alias = cache_dir / f"{mod_id}_{output_path.name}"

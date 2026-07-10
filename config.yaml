@@ -22,6 +22,10 @@ playback:
 archive:
   path: "archiwum"
 
+# Optional remote URL policy. Empty means allow public URLs for compatibility.
+# remote:
+#   allowed_domains: [youtube.com, youtu.be, modarchive.org]
+
 # Auto-start / Auto-stop
 auto:
   start_channel: "Chiptune Radio"  # voice channel name to auto-start (empty = disabled)
