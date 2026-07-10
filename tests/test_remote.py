@@ -11,6 +11,12 @@ def test_is_remote_track():
     assert is_remote_track("https://example.com/song.mod") is True
     assert is_remote_track("http://example.com/song.mod") is True
     assert is_remote_track("/music/song.mod") is False
+    assert is_remote_track("https://") is False
+    assert is_remote_track("file:///music/song.mod") is False
+
+
+def test_is_remote_track_rejects_malformed_url():
+    assert is_remote_track("https://[invalid") is False
 
 
 def test_remote_cache_path_is_stable_and_sanitized(tmp_path):
@@ -33,7 +39,8 @@ def test_download_remote_track_writes_file(tmp_path, monkeypatch):
             return False
 
         def read(self, size: int) -> bytes:
-            return self._data
+            data, self._data = self._data[:size], self._data[size:]
+            return data
 
     def fake_urlopen(request, timeout=0):
         return FakeResponse(b"abc123")

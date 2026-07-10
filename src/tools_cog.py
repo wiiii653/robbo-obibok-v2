@@ -22,7 +22,9 @@ class ToolsCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         col = get_collection(state.collection_mode)
         embed = discord.Embed(title="Radio Stats", color=0x3498DB)
-        embed.add_field(name="Collection", value=col.name if col else state.collection_mode, inline=True)
+        embed.add_field(
+            name="Collection", value=col.name if col else state.collection_mode, inline=True
+        )
         embed.add_field(name="Tracks Loaded", value=str(len(state.tracks)), inline=True)
         embed.add_field(name="Queue Size", value=str(len(state.queue)), inline=True)
         embed.add_field(name="Played", value=str(state.played_count), inline=True)
@@ -32,22 +34,23 @@ class ToolsCog(commands.Cog):
     @commands.command()
     async def ocko(self, ctx: commands.Context) -> None:
         import random
+
         arts = [
             # 🦉 Sowy
             "🦉 **OCKO**\n      ___  \n     / _ \\ \n  _ | |_| |\n / | | __ |\n|  | | |_| |\n \\  \\|  _  |\n  \\   \\_/  |\n   |       |\n   |   |   |\n   |___|___|",
             "🦉 **OCKO**\n    .---.\n   / .-._)\n .\xb4:  _  `.\n |  (_)  |\n :       ;\n  `.___.\xb4",
-            "🦉 **OCKO**\n  ,___,\n  {o,o}\n  |)__)\n  -\"--\"-\n  m   m",
+            '🦉 **OCKO**\n  ,___,\n  {o,o}\n  |)__)\n  -"--"-\n  m   m',
             "🦉 **OCKO**\n    ___  \n   (o o) \n  (  V  )\n  --m-m---",
             "🦉 **OCKO**\n  .------.\n  |O  O  |\n  |  V   |\n  `------\xb4\n    ww ww",
             # 🐺 Wilk (dla Boruty)
             "🐺 **WILK**\n    __       __\n   /  \\\\\\.-./  \\\\\n   \\\\   (o o)   /\n    \\\\   U   /\n    /\\\\  -  /\\\\\n   /  \\\\/ \\\\/  \\\\\n  / /\\      /\\ \\\\\n  \\\\/_/ \\\\  / \\\\_\\\\\n     /_/    \\_\\",
             "🐺 **WILK**\n       __\n      /  \\\\\n     / . .\\\\\n    /  \\___/\n   /  /\n  /  /\n /  /\n/  /\n\\  \\\n \\  \\\n  \\  \\\n   \\  \\\n    \\__\\\\",
             # 🐻 Niedźwiedź
-            "🐻 **MIŚ**\n    (\\_/)\n    (o.o)\n    ( > )\n   /\"\"\"\"\"\\\\\n  /       \\\\\n |  ___   |\n | |___|  |\n  \\_______/",
+            '🐻 **MIŚ**\n    (\\_/)\n    (o.o)\n    ( > )\n   /"""""\\\\\n  /       \\\\\n |  ___   |\n | |___|  |\n  \\_______/',
             # 🐱 Kot
-            "🐱 **KOT**\n    /\\_/\\\\\n   ( o.o )\n    > ^ <\n   /\"\"\"\"\"\\\\\n  |       |\n  |  _   _|\n  | |_| |_|\n   \\_______/\n    |     |\n    |     |\n    |_____|",
+            '🐱 **KOT**\n    /\\_/\\\\\n   ( o.o )\n    > ^ <\n   /"""""\\\\\n  |       |\n  |  _   _|\n  | |_| |_|\n   \\_______/\n    |     |\n    |     |\n    |_____|',
             # 🦊 Lis
-            "🦊 **LIS**\n    /\\_/\\\\\n   ( ,_.)\n   / >{} >\n  /\"\"\"\"\"\\\\\n /       \\\\\n|  ___   |\n| |___|  |\n \\_______/",
+            '🦊 **LIS**\n    /\\_/\\\\\n   ( ,_.)\n   / >{} >\n  /"""""\\\\\n /       \\\\\n|  ___   |\n| |___|  |\n \\_______/',
             # 🐉 Smok
             "🐉 **SMOK**\n      /\\\\\n     /  \\\\\n    /||  \\\\\n   / ||   \\\\\n  /  ||    \\\\\n /___||_____\\\\\n | __||__   |\n || (__)||  |\n ||    ||  |\n ||____||__|\n |______|",
             # 🐦 Ptak
@@ -129,10 +132,7 @@ class ToolsCog(commands.Cog):
 
         embed.add_field(
             name="\U0001f527 Tools",
-            value=(
-                "`!stats` — Show bot stats\n"
-                "`!ocko` — \U0001f989 ASCII owl"
-            ),
+            value=("`!stats` — Show bot stats\n`!ocko` — \U0001f989 ASCII owl"),
             inline=False,
         )
 

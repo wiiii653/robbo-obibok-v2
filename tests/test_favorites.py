@@ -103,11 +103,15 @@ class TestPlaylistLibrary:
         lib = PlaylistLibrary(str(tmp_path))
         path = tmp_path / "var" / "playlists" / "My Playlist.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "name": "My Playlist",
-            "author": "User",
-            "tracks": [{"filepath": "ok.sap"}, {"bad": True}],
-        }))
+        path.write_text(
+            json.dumps(
+                {
+                    "name": "My Playlist",
+                    "author": "User",
+                    "tracks": [{"filepath": "ok.sap"}, {"bad": True}],
+                }
+            )
+        )
         loaded = lib.load("My Playlist")
         assert loaded is not None
         assert len(loaded["tracks"]) == 1

@@ -129,6 +129,7 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     dynamically instead of relying on saved state.
     """
     from .remote import is_remote_track
+
     if is_remote_track(filepath):
         low = filepath.lower()
         # ModArchive URLs
@@ -174,8 +175,14 @@ def resolve_collection_for_saved_track(
 ) -> str:
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
     if ext in UNAMBIGUOUS_TRACK_EXTENSIONS:
-        return resolve_collection_for_filepath(filepath) or saved_collection_id or fallback_collection_id
-    return saved_collection_id or resolve_collection_for_filepath(filepath) or fallback_collection_id
+        return (
+            resolve_collection_for_filepath(filepath)
+            or saved_collection_id
+            or fallback_collection_id
+        )
+    return (
+        saved_collection_id or resolve_collection_for_filepath(filepath) or fallback_collection_id
+    )
 
 
 def extract_metadata(filepath: str, collection_id: str) -> dict[str, str]:

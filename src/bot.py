@@ -69,7 +69,9 @@ class ObibokBot(commands.Bot):
             old.cleanup()
         source = MonitorAudioSource(sink_name=self.sink_name)
         source.source_id = id(source)
-        voice_client.play(source, after=lambda e: self._on_stream_end(guild_id, e, source.source_id))
+        voice_client.play(
+            source, after=lambda e: self._on_stream_end(guild_id, e, source.source_id)
+        )
         self._active_streams[guild_id] = source
 
     def _stop_stream(self, guild_id: int) -> None:
@@ -87,7 +89,10 @@ class ObibokBot(commands.Bot):
         if error:
             vc = self.get_guild(guild_id).voice_client if self.get_guild(guild_id) else None
             if vc and vc.is_connected():
-                logger.info("Stream died (error) but voice connected, restarting stream for guild %s", guild_id)
+                logger.info(
+                    "Stream died (error) but voice connected, restarting stream for guild %s",
+                    guild_id,
+                )
                 self._start_stream(guild_id, vc)
 
     def try_acquire_lease(self, guild: discord.Guild) -> bool:
@@ -172,11 +177,15 @@ class ObibokBot(commands.Bot):
                     continue
                 vc = guild.voice_client
                 if not vc or not vc.is_connected():
-                    logger.warning("Health watchdog: voice disconnected for active stream in guild %s", gid)
+                    logger.warning(
+                        "Health watchdog: voice disconnected for active stream in guild %s", gid
+                    )
                 elif not vc.is_playing():
-                    logger.warning("Health watchdog: voice connected but not playing for guild %s, restarting stream", gid)
+                    logger.warning(
+                        "Health watchdog: voice connected but not playing for guild %s, restarting stream",
+                        gid,
+                    )
                     self._start_stream(gid, vc)
-
 
 
 __all__ = ["ObibokBot", "CollectionCog", "FavoritesCog", "PlaybackCog", "ToolsCog"]

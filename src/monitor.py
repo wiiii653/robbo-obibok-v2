@@ -55,7 +55,6 @@ def should_confirm_output_drop(
     return False, confirmed_since
 
 
-
 def should_advance_after_stop(
     not_playing_since: float | None,
     now: float,
@@ -206,7 +205,11 @@ class TrackMonitor:
         is_console = is_console_format(track)
         if elapsed < self._last_output:
             if is_console:
-                logger.debug("Output length dropped %d->%d on console format (ignored)", self._last_output, elapsed)
+                logger.debug(
+                    "Output length dropped %d->%d on console format (ignored)",
+                    self._last_output,
+                    elapsed,
+                )
                 self._last_output = elapsed
                 return
             # Output length resets are format quirks (MOD pattern loops,

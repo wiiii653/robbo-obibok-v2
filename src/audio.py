@@ -33,7 +33,8 @@ def setup_sink(sink_name: str) -> bool:
     try:
         result = subprocess.run(
             ["pactl", "list", "sinks", "short"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
     except OSError:
         return False
@@ -44,7 +45,9 @@ def setup_sink(sink_name: str) -> bool:
     try:
         created = subprocess.run(
             [
-                "pactl", "load-module", "module-null-sink",
+                "pactl",
+                "load-module",
+                "module-null-sink",
                 f"sink_name={sink_name}",
                 "sink_properties=device.description=Robbo_Obibok",
             ],
@@ -79,9 +82,7 @@ def check_audacious_version(required_version: str = SUPPORTED_AUDACIOUS_VERSION)
         logger.warning("Could not determine Audacious version")
         return None
     if version != required_version:
-        raise RuntimeError(
-            f"Unsupported Audacious version {version}; expected {required_version}"
-        )
+        raise RuntimeError(f"Unsupported Audacious version {version}; expected {required_version}")
     logger.info("Audacious version verified: %s", version)
     return version
 
@@ -200,9 +201,9 @@ def _get_sap_time_seconds(filepath: str) -> int | None:
         TIME 02:57.133       -> 177s
         TIME 01:29.80 LOOP   -> 89s (LOOP suffix ignored)
     """
+    times: list[int] = []
     try:
         with open(filepath, "r", encoding="ascii", errors="replace") as f:
-            times: list[int] = []
             for _ in range(30):
                 line = f.readline()
                 if not line:
@@ -341,7 +342,9 @@ def is_playing() -> bool:
 def output_length() -> int:
     result = subprocess.run(
         ["audtool", "current-song-output-length-seconds"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     try:
         return int(result.stdout.strip())
@@ -352,7 +355,9 @@ def output_length() -> int:
 def song_length() -> int:
     result = subprocess.run(
         ["audtool", "current-song-length-seconds"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     try:
         return int(result.stdout.strip())
@@ -364,7 +369,9 @@ def current_song() -> str:
     """Return the song title as reported by Audacious (audtool current-song)."""
     result = subprocess.run(
         ["audtool", "current-song"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     return result.stdout.strip()
 
@@ -373,7 +380,9 @@ def current_song_filename() -> str:
     """Return the full filepath of the currently playing song."""
     result = subprocess.run(
         ["audtool", "current-song-filename"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     return result.stdout.strip()
 
@@ -381,7 +390,8 @@ def current_song_filename() -> str:
 def get_volume(sink_name: str) -> int | None:
     result = subprocess.run(
         ["pactl", "get-sink-volume", sink_name],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     m = re.search(r"(\d+)%", result.stdout)
     return int(m.group(1)) if m else None
@@ -428,18 +438,28 @@ def disable_repeat() -> None:
     try:
         result = subprocess.run(
             ["audtool", "playlist-repeat-status"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         status = result.stdout.strip().lower() if result.returncode == 0 else ""
         if status == "off":
             logger.info("Audacious playlist repeat already off")
             return
         if status == "on":
-            if subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode == 0:
+            if (
+                subprocess.run(
+                    ["audtool", "playlist-repeat-toggle"], capture_output=True
+                ).returncode
+                == 0
+            ):
                 logger.info("Audacious playlist repeat disabled")
                 return
         # Status unknown — try toggling
-        if subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode == 0:
+        if (
+            subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode
+            == 0
+        ):
             logger.info("Audacious playlist repeat toggled (assumed off now)")
             return
     except OSError:
@@ -469,7 +489,9 @@ def _is_audacious_alive() -> bool:
         return False
     alive = get_audacious_version() is not None
     if not alive:
-        logger.warning("Health watchdog: audtool version failed (process exists but D-Bus unresponsive)")
+        logger.warning(
+            "Health watchdog: audtool version failed (process exists but D-Bus unresponsive)"
+        )
     return alive
 
 
@@ -477,7 +499,9 @@ def _move_to_sink(sink_name: str) -> None:
     env = {**os.environ, "LC_ALL": "C"}
     result = subprocess.run(
         ["pactl", "list", "sink-inputs"],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     for block in result.stdout.split("Sink Input #")[1:]:
         index, _, details = block.partition("\n")
@@ -500,7 +524,8 @@ def _audtool_call(*args: str) -> bool:
     try:
         result = subprocess.run(
             ["audtool", *args],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
@@ -627,8 +652,11 @@ class AudioController:
         total playback time is song_length() × number of songs.
         """
         fname = self._last_filepath or current_song_filename()
-        if not (fname.lower().endswith(".sid") or fname.lower().endswith(".psid")
-                or fname.lower().endswith(".rsid")):
+        if not (
+            fname.lower().endswith(".sid")
+            or fname.lower().endswith(".psid")
+            or fname.lower().endswith(".rsid")
+        ):
             return None
         songs = _get_sid_songs_count(fname)
         if songs <= 1:

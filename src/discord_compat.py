@@ -10,6 +10,7 @@ try:  # pragma: no cover - exercised indirectly when discord.py is installed
     import discord as _discord
     from discord.ext import commands as _commands
 except ModuleNotFoundError:  # pragma: no cover - covered by local tests
+
     class _Embed:
         def __init__(self, *, title: str = "", description: str = "", color: int = 0) -> None:
             self.title = title
@@ -35,7 +36,6 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         def set_footer(self, *, text: str = "") -> None:
             self.footer = {"text": text}
 
-
     @dataclass
     class _Intents:
         message_content: bool = False
@@ -47,10 +47,8 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         def default(cls) -> "_Intents":
             return cls()
 
-
     class _AudioSource:
         pass
-
 
     class _VoiceClient:
         def __init__(self, **attrs: Any) -> None:
@@ -60,17 +58,17 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         async def disconnect(self) -> None:
             return None
 
-        def play(self, source: Any, after: Callable[[Exception | None], None] | None = None) -> None:
+        def play(
+            self, source: Any, after: Callable[[Exception | None], None] | None = None
+        ) -> None:
             self.source = source
             self.after = after
-
 
     class _Command:
         def __init__(self, callback: Callable[..., Any], **kwargs: Any) -> None:
             self.callback = callback
             self.name = kwargs.get("name", callback.__name__)
             self.aliases = list(kwargs.get("aliases", []))
-
 
     class _Cog:
         @staticmethod
@@ -79,7 +77,6 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
                 return func
 
             return decorator
-
 
     class _Bot:
         def __init__(self, *_, **kwargs: Any) -> None:
@@ -111,20 +108,17 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         def run(self, token: str) -> None:
             raise RuntimeError("discord.py is not installed")
 
-
     def _command(**kwargs: Any) -> Callable[[Callable[..., Any]], _Command]:
         def decorator(func: Callable[..., Any]) -> _Command:
             return _Command(func, **kwargs)
 
         return decorator
 
-
     def _get(iterable: Any, /, **attrs: Any) -> Any:
         for item in iterable:
             if all(getattr(item, key, None) == value for key, value in attrs.items()):
                 return item
         return None
-
 
     _discord = SimpleNamespace(
         Embed=_Embed,
@@ -138,7 +132,9 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         RawReactionActionEvent=type("RawReactionActionEvent", (), {}),
         utils=SimpleNamespace(get=_get),
     )
-    _commands = SimpleNamespace(Bot=_Bot, Cog=_Cog, Context=type("Context", (), {}), command=_command)
+    _commands = SimpleNamespace(
+        Bot=_Bot, Cog=_Cog, Context=type("Context", (), {}), command=_command
+    )
 
 
 discord = _discord

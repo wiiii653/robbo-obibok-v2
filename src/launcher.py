@@ -29,6 +29,7 @@ def setup_logging(root_dir: str = "") -> None:
     # Also write to a rotating file under var/ when root_dir is given
     if root_dir:
         from logging.handlers import RotatingFileHandler
+
         log_dir = Path(root_dir) / "var"
         log_dir.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(
@@ -66,11 +67,13 @@ def create_bot(config: AppConfig) -> ObibokBot:
     audio.setup()
     # Load per-format volumes from config (merges over defaults)
     import yaml
+
     try:
         raw_cfg = yaml.safe_load(Path(root_dir, "config.yaml").read_text()) or {}
         fv = raw_cfg.get("format_volumes", {})
         if isinstance(fv, dict) and fv:
             from .audio import load_format_volumes_from_dict
+
             load_format_volumes_from_dict(fv)
             logger.info("Loaded format_volumes from config: %s", fv)
     except Exception as exc:

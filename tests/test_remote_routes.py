@@ -25,7 +25,8 @@ def test_download_modarchive_module_uses_cache(tmp_path, monkeypatch):
             return False
 
         def read(self, size: int) -> bytes:
-            return self._data
+            data, self._data = self._data[:size], self._data[size:]
+            return data
 
     def fake_urlopen(request, timeout=0):
         return FakeResponse(b"module-bytes")

@@ -58,6 +58,7 @@ class TestCreateBot:
 class TestSetupLogging:
     def test_setup_logging_runs(self):
         from src.launcher import setup_logging
+
         setup_logging()
         assert True
 
@@ -68,6 +69,7 @@ class TestSetupLogging:
         mock_config.return_value = AppConfig()
         mock_exit.side_effect = SystemExit
         from src.launcher import main
+
         try:
             main()
         except SystemExit:
@@ -78,13 +80,16 @@ class TestSetupLogging:
     @patch("src.launcher.check_audacious_version")
     @patch("src.launcher.load_dotenv")
     @patch("src.launcher.load_config")
-    def test_main_rejects_unsupported_audacious(self, mock_config, mock_dotenv, mock_check, mock_exit):
+    def test_main_rejects_unsupported_audacious(
+        self, mock_config, mock_dotenv, mock_check, mock_exit
+    ):
         config = AppConfig()
         config.token = "test-token"
         mock_config.return_value = config
         mock_check.side_effect = RuntimeError("Unsupported Audacious version 4.6.2; expected 4.6.1")
         mock_exit.side_effect = SystemExit
         from src.launcher import main
+
         try:
             main()
         except SystemExit:

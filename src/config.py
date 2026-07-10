@@ -79,7 +79,11 @@ def validate_config(data: dict) -> None:
             raise ValueError("config.auto.start_channel must be a string")
         if "empty_timeout" in auto:
             empty_timeout = auto.get("empty_timeout", 60)
-            if not isinstance(empty_timeout, int) or isinstance(empty_timeout, bool) or empty_timeout < 0:
+            if (
+                not isinstance(empty_timeout, int)
+                or isinstance(empty_timeout, bool)
+                or empty_timeout < 0
+            ):
                 raise ValueError("config.auto.empty_timeout must be zero or greater")
 
     if "archive" in data:

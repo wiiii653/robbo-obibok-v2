@@ -58,7 +58,9 @@ class PlaybackEngine:
         state.search_results = []
         state.search_collection_id = ""
 
-    async def start_radio(self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0) -> str | None:
+    async def start_radio(
+        self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0
+    ) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
         paths = load_raw_paths(state.collection_mode, self.root_dir)
@@ -164,9 +166,15 @@ class PlaybackEngine:
         for path in state.tracks:
             normalized_path = path.replace("\\", "/")
             filename = normalized_path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ")
-            directory = normalized_path.rsplit("/", 1)[0].replace("_", " ") if "/" in normalized_path else ""
-            if query_lower in filename.lower() or query_lower in normalized_path.lower() or (
-                directory and query_lower in directory.lower()
+            directory = (
+                normalized_path.rsplit("/", 1)[0].replace("_", " ")
+                if "/" in normalized_path
+                else ""
+            )
+            if (
+                query_lower in filename.lower()
+                or query_lower in normalized_path.lower()
+                or (directory and query_lower in directory.lower())
             ):
                 results.append(path)
                 if len(results) >= 10:
@@ -197,7 +205,11 @@ class PlaybackEngine:
         next_track = state.queue[next_index]
         if not is_remote_track(next_track):
             return None
-        if state.predownload_url == next_track and state.predownload_path and Path(state.predownload_path).exists():
+        if (
+            state.predownload_url == next_track
+            and state.predownload_path
+            and Path(state.predownload_path).exists()
+        ):
             return state.predownload_path
         try:
             output_path = await self._download_remote_track(state, next_track)
@@ -209,7 +221,9 @@ class PlaybackEngine:
             state.predownload_path = output_path
         return output_path
 
-    def describe_search_result(self, filepath: str, collection_id: str, index: int | None = None) -> str:
+    def describe_search_result(
+        self, filepath: str, collection_id: str, index: int | None = None
+    ) -> str:
         col = get_collection(collection_id)
         meta = self.get_track_metadata(filepath, collection_id)
         normalized = filepath.replace("\\", "/")
@@ -236,6 +250,7 @@ class PlaybackEngine:
     def get_track_metadata(self, filepath: str, collection_id: str) -> dict[str, str]:
         if is_remote_track(filepath):
             from urllib.parse import unquote, urlparse
+
             parsed = urlparse(filepath)
             # For ModArchive URLs, use module ID as label
             if "moduleid=" in filepath:
@@ -272,12 +287,14 @@ class PlaybackEngine:
         info: list[dict] = []
         for i, path in enumerate(state.queue):
             filename = path.rsplit("/", 1)[-1]
-            info.append({
-                "index": i,
-                "path": path,
-                "filename": filename,
-                "is_current": i == state.position,
-            })
+            info.append(
+                {
+                    "index": i,
+                    "path": path,
+                    "filename": filename,
+                    "is_current": i == state.position,
+                }
+            )
         return info
 
     async def _resolve_track_path(self, state: PlaybackState, track: str) -> Path | None:
