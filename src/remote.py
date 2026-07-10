@@ -141,6 +141,9 @@ def download_youtube_track(
             info = ydl.extract_info(url, download=False)
             vid = info.get("id", "")
             dur = info.get("duration", 0) or 0
+            if info.get("is_live") or info.get("was_live"):
+                logger.warning("YouTube livestream not supported: %s (%s)", url, info.get("title", "?"))
+                return None
             if dur > MAX_YOUTUBE_DURATION_SECONDS:
                 logger.warning(
                     "YouTube track too long: %ds (max %ds)", dur, MAX_YOUTUBE_DURATION_SECONDS
@@ -164,6 +167,7 @@ def download_youtube_track(
                 "quiet": True,
                 "no_warnings": True,
                 "max_filesize": 256 * 1024 * 1024,
+                "socket_timeout": 30,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl_dl:
                 ydl_dl.download([url])
