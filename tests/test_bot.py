@@ -87,6 +87,7 @@ class TestBotStateManagement:
         assert snapshot["playing_guilds"] == 1
         assert snapshot["active_streams"] == 0
         assert snapshot["lease_owner"] is None
+        assert snapshot["uptime_seconds"] >= 0
 
     @pytest.mark.asyncio
     async def test_completed_predownload_task_is_removed(self, tmp_path):
@@ -367,3 +368,177 @@ class TestPlaybackLogic:
         bot.engine.skip_track.assert_awaited_once_with(state)
         cog._after_track_started.assert_awaited_once_with(ctx, state)
         cog._play_and_monitor.assert_not_awaited()
+
+
+class TestPlaybackCommandBranches:
+    @pytest.mark.asyncio
+    async def test_play_requires_voice_channel(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.author.voice = None
+        ctx.send = AsyncMock()
+
+        await cog.play.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Join a voice channel first!")
+
+    @pytest.mark.asyncio
+    async def test_play_search_reports_no_results(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.author.voice.channel = MagicMock()
+        ctx.send = AsyncMock()
+        bot.engine.search = MagicMock(return_value=[])
+
+        await cog.play.callback(cog, ctx, query="missing")
+
+        ctx.send.assert_awaited_once_with("No tracks matching `missing`.")
+
+    @pytest.mark.asyncio
+    async def test_play_invalid_search_number(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        state.search_results = ["song.sap"]
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.author.voice.channel = MagicMock()
+        ctx.send = AsyncMock()
+
+        await cog.play.callback(cog, ctx, query="2")
+
+        ctx.send.assert_awaited_once_with("Invalid number. Use !search first.")
+
+    @pytest.mark.asyncio
+    async def test_skip_requires_lease_owner(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(999, "Other")
+        bot.engine.skip_track = AsyncMock()
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.skip.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once()
+        bot.engine.skip_track.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_np_and_history_report_idle_state(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.np.callback(cog, ctx)
+        await cog.history.callback(cog, ctx)
+
+        assert ctx.send.await_args_list[0].args == ("Nothing playing.",)
+        assert ctx.send.await_args_list[1].args == ("No history yet.",)
+
+    @pytest.mark.asyncio
+    async def test_volume_query_and_set(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+        bot.engine.audio.get_volume.return_value = 80
+
+        await cog.volume.callback(cog, ctx)
+        await cog.volume.callback(cog, ctx, 125)
+
+        assert ctx.send.await_args_list[0].args == ("Volume: 80%",)
+        assert ctx.send.await_args_list[1].args == ("Volume set to 125%",)
+        bot.engine.audio.set_volume.assert_called_once_with(125)
+
+    @pytest.mark.asyncio
+    async def test_export_reports_empty_queue(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.export.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Queue empty.")
+
+
+class TestFavoritesCommandBranches:
+    @pytest.mark.asyncio
+    async def test_favorites_empty(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        ctx = MagicMock()
+        ctx.author.id = 7
+        ctx.send = AsyncMock()
+
+        await cog.favorites.callback(cog, ctx)
+
+        assert "No favorites" in ctx.send.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_favplay_requires_voice(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        ctx = MagicMock()
+        ctx.guild = None
+        ctx.author.voice = None
+        ctx.send = AsyncMock()
+
+        await cog.favplay.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with("Join a voice channel first!")
+
+    @pytest.mark.asyncio
+    async def test_favplay_invalid_number(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        bot.engine.favorites.add(7, "track.sap", "Track", "asma")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.author.id = 7
+        ctx.author.voice.channel = MagicMock()
+        ctx.send = AsyncMock()
+
+        await cog.favplay.callback(cog, ctx, number="bad")
+
+        ctx.send.assert_awaited_once_with("Usage: `!favplay <number>` or `!favplay` to play all.")
+
+    @pytest.mark.asyncio
+    async def test_blacklist_commands_handle_empty_and_invalid(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        ctx = MagicMock()
+        ctx.author.id = 7
+        ctx.send = AsyncMock()
+
+        await cog.blks.callback(cog, ctx)
+        await cog.blkrm.callback(cog, ctx, 1)
+
+        assert "No blacklisted" in ctx.send.await_args_list[0].args[0]
+        assert ctx.send.await_args_list[1].args == ("Invalid index.",)
+
+    @pytest.mark.asyncio
+    async def test_favsave_and_favload_report_missing_data(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        ctx = MagicMock()
+        ctx.author.id = 7
+        ctx.author.name = "User"
+        ctx.guild.id = 123
+        ctx.author.voice.channel = MagicMock()
+        ctx.send = AsyncMock()
+
+        await cog.favsave.callback(cog, ctx, name="saved")
+        await cog.favload.callback(cog, ctx, name="missing")
+
+        assert ctx.send.await_args_list[0].args == ("No favorites to save.",)
+        assert "not found" in ctx.send.await_args_list[1].args[0]

@@ -8,6 +8,7 @@ from .models import PlaybackState
 from .persistence import load_json, save_json
 
 QUEUE_SCHEMA_VERSION = 2
+BLACKLIST_SCHEMA_VERSION = 2
 
 
 def normalize_queue_record(data: object) -> dict | None:
@@ -163,7 +164,7 @@ class Blacklist:
         self._loaded = True
 
     def _save(self) -> None:
-        save_json(self._filepath, self._data)
+        save_json(self._filepath, {"schema_version": BLACKLIST_SCHEMA_VERSION, **self._data})
 
     def is_blacklisted(self, filepath: str) -> bool:
         self._ensure_loaded()

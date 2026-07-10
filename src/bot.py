@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from .cogs import CollectionCog, FavoritesCog, PlaybackCog, ToolsCog
@@ -52,6 +53,7 @@ class ObibokBot(commands.Bot):
         self._background_tasks: list[asyncio.Task] = []
         self._playback_sessions: dict[int, int] = {}
         self._np_messages_max = 200
+        self._started_at = time.monotonic()
 
     def _track_np_message(self, msg_id: int, data: dict[str, Any]) -> None:
         if len(self._np_messages) >= self._np_messages_max:
@@ -134,6 +136,7 @@ class ObibokBot(commands.Bot):
         states = list(self._states.values())
         return {
             "status": "ok" if not self.is_closed() else "stopping",
+            "uptime_seconds": round(max(0.0, time.monotonic() - self._started_at), 1),
             "guilds": len(self.guilds),
             "tracked_states": len(states),
             "playing_guilds": sum(1 for state in states if state.is_playing),
