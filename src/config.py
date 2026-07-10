@@ -3,16 +3,10 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-
-HOSTNAME_RE = re.compile(
-    r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"
-)
-
 
 @dataclass(slots=True)
 class AudioConfig:
@@ -32,13 +26,6 @@ class AutoConfig:
 
 
 @dataclass(slots=True)
-class RemoteConfig:
-    # Empty means preserve the legacy behavior and allow arbitrary public URLs.
-    # Production deployments should configure an explicit allowlist.
-    allowed_domains: tuple[str, ...] = ()
-
-
-@dataclass(slots=True)
 class AppConfig:
     token: str = ""
     command_prefix: str = "!"
@@ -46,7 +33,6 @@ class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
     playback: PlaybackConfig = field(default_factory=PlaybackConfig)
     auto: AutoConfig = field(default_factory=AutoConfig)
-    remote: RemoteConfig = field(default_factory=RemoteConfig)
     archive_path: str = "archiwum"
     format_volumes: dict[str, int] = field(default_factory=dict)
 
@@ -115,18 +101,6 @@ def validate_config(data: dict) -> None:
         ):
             raise ValueError("config.archive.path must be a non-empty string")
 
-    if "remote" in data:
-        remote = _require_mapping(data, "remote")
-        domains = remote.get("allowed_domains", [])
-        if not isinstance(domains, list) or not all(isinstance(domain, str) for domain in domains):
-            raise ValueError("config.remote.allowed_domains must be a list of hostnames")
-        for domain in domains:
-            normalized = domain.strip().lower().lstrip(".")
-            if not normalized or not HOSTNAME_RE.fullmatch(normalized):
-                raise ValueError(
-                    f"config.remote.allowed_domains contains invalid hostname: {domain}"
-                )
-
     if "format_volumes" in data:
         volumes = data["format_volumes"]
         if not isinstance(volumes, dict):
@@ -164,7 +138,6 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     playback_data = _require_mapping(data, "playback")
     auto_data = _require_mapping(data, "auto")
     archive_data = _require_mapping(data, "archive")
-    remote_data = _require_mapping(data, "remote")
     format_volumes = data.get("format_volumes", {})
 
     return AppConfig(
@@ -183,11 +156,5 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             empty_timeout=auto_data.get("empty_timeout", 60),
         ),
         archive_path=archive_data.get("path", "archiwum"),
-        remote=RemoteConfig(
-            allowed_domains=tuple(
-                domain.strip().lower().lstrip(".")
-                for domain in remote_data.get("allowed_domains", [])
-            )
-        ),
         format_volumes=dict(format_volumes),
     )
