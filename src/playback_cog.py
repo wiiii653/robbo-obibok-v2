@@ -13,7 +13,6 @@ from .collection_loader import get_collection, load_raw_paths
 from .discord_compat import commands, discord
 from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
-from .remote import is_remote_track
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
@@ -138,7 +137,6 @@ class PlaybackCog(commands.Cog):
             logger.warning("Failed to stop audio during cleanup: %s", exc)
         if guild_id is not None:
             self.bot._stop_stream(guild_id)
-            self.bot._cancel_predownload(guild_id)
         if guild_id is not None:
             self.bot._cancel_monitor(guild_id)
         self.bot.release_lease(guild_id)
@@ -224,7 +222,6 @@ class PlaybackCog(commands.Cog):
         except Exception as exc:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(member.guild.id)
-            self.bot._cancel_predownload(member.guild.id)
             self.bot._cancel_monitor(member.guild.id)
             self.bot.release_lease(member.guild.id)
             logger.warning("Auto-start failed: %s", exc)
@@ -257,21 +254,6 @@ class PlaybackCog(commands.Cog):
 
         state = self.bot.get_state(ctx.guild.id)
 
-        if is_remote_track(query):
-            if not self.bot.try_acquire_lease(ctx.guild):
-                owner = self.bot.playback_lease.owner_guild_name or "another server"
-                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
-            self.bot._cancel_predownload(ctx.guild.id)
-            self._set_queue(state, [(query, state.collection_mode)])
-            await self._connect_and_play(
-                ctx,
-                state,
-                voice_channel,
-                start_message="Starting remote track...",
-                failure_prefix="Failed to play remote track",
-            )
-            return
-
         if query.isdigit():
             idx = int(query) - 1
             if not state.search_results or idx < 0 or idx >= len(state.search_results):
@@ -285,7 +267,6 @@ class PlaybackCog(commands.Cog):
             supported, reason = _is_sap_supported(path)
             if not supported:
                 return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
-            self.bot._cancel_predownload(ctx.guild.id)
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
             await self._connect_and_play(
                 ctx,
@@ -303,7 +284,6 @@ class PlaybackCog(commands.Cog):
             if not self.bot.try_acquire_lease(ctx.guild):
                 owner = self.bot.playback_lease.owner_guild_name or "another server"
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
-            self.bot._cancel_predownload(ctx.guild.id)
             state.search_results = results
             state.search_collection_id = state.collection_mode
             self._set_queue(state, [(path, state.collection_mode) for path in results])
@@ -323,7 +303,6 @@ class PlaybackCog(commands.Cog):
             owner = self.bot.playback_lease.owner_guild_name or "another server"
             return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
         try:
-            self.bot._cancel_predownload(ctx.guild.id)
             track = await self.bot.engine.start_radio(state, user_id=ctx.author.id)
             if not track:
                 self.bot.release_lease(ctx.guild.id)
@@ -351,7 +330,6 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.stop(state)
         self.bot._stop_stream(ctx.guild.id)
-        self.bot._cancel_predownload(ctx.guild.id)
         self.bot._cancel_monitor(ctx.guild.id)
         self.bot.release_lease(ctx.guild.id)
         if ctx.voice_client:
@@ -366,7 +344,6 @@ class PlaybackCog(commands.Cog):
             return
         state = self.bot.get_state(ctx.guild.id)
         self.bot._cancel_monitor(ctx.guild.id)
-        self.bot._cancel_predownload(ctx.guild.id)
         track = await self.bot.engine.skip_track(state)
         if not track:
             return await self._finish_playback(ctx, state, "Playlist ended.")
@@ -414,7 +391,6 @@ class PlaybackCog(commands.Cog):
         if index < 1 or index > len(state.queue):
             return await ctx.send("Invalid position.")
         self.bot._cancel_monitor(ctx.guild.id)
-        self.bot._cancel_predownload(ctx.guild.id)
         track = await self.bot.engine.jump_to_track(state, index - 1)
         if not track:
             return await self._finish_playback(ctx, state, "Failed to play track.")
@@ -448,7 +424,6 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.clear(state)
         self.bot._stop_stream(ctx.guild.id)
-        self.bot._cancel_predownload(ctx.guild.id)
         self.bot._cancel_monitor(ctx.guild.id)
         self.bot.release_lease(ctx.guild.id)
         if ctx.voice_client:
@@ -494,7 +469,6 @@ class PlaybackCog(commands.Cog):
         )
 
         self.bot._cancel_monitor(ctx.guild.id)
-        self.bot._cancel_predownload(ctx.guild.id)
 
         self.bot._start_stream(ctx.guild.id, ctx.voice_client)
 
@@ -507,8 +481,6 @@ class PlaybackCog(commands.Cog):
 
     async def _after_track_started(self, ctx: commands.Context, state: PlaybackState) -> None:
         await self._send_now_playing(ctx, state)
-        if ctx.guild:
-            self.bot._schedule_predownload(ctx.guild.id, state)
 
     def _voice_member_count(self, ctx: commands.Context) -> int:
         # Use the guild's actual voice client (ctx.voice_client can be stale after reconnect)
@@ -575,7 +547,6 @@ class PlaybackCog(commands.Cog):
         async def on_empty() -> None:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(ctx.guild.id)
-            self.bot._cancel_predownload(ctx.guild.id)
             self.bot.release_lease(ctx.guild.id)
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()

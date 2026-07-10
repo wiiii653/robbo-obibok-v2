@@ -48,7 +48,6 @@ class ObibokBot(commands.Bot):
         self._states: dict[int, PlaybackState] = {}
         self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
-        self._predownload_tasks: dict[int, asyncio.Task] = {}
         self._active_streams: dict[int, MonitorAudioSource] = {}
         self._background_tasks: list[asyncio.Task] = []
         self._playback_sessions: dict[int, int] = {}
@@ -57,7 +56,6 @@ class ObibokBot(commands.Bot):
         self._metrics: dict[str, int] = {
             "playback_failures": 0,
             "stream_restarts": 0,
-            "predownload_failures": 0,
         }
 
     def increment_metric(self, name: str) -> None:
@@ -114,33 +112,10 @@ class ObibokBot(commands.Bot):
         if guild_id is None or self.playback_lease.owner_guild_id == guild_id:
             self.playback_lease.release()
 
-    def _cancel_predownload(self, guild_id: int) -> None:
-        task = self._predownload_tasks.pop(guild_id, None)
-        if task and not task.done():
-            task.cancel()
-
     def _cancel_monitor(self, guild_id: int) -> None:
         task = self._monitor_tasks.pop(guild_id, None)
         if task and not task.done() and task is not asyncio.current_task():
             task.cancel()
-
-    def _schedule_predownload(self, guild_id: int, state: PlaybackState) -> None:
-        self._cancel_predownload(guild_id)
-        task = asyncio.create_task(self.engine.predownload_next(state))
-        self._predownload_tasks[guild_id] = task
-
-        def on_done(completed: asyncio.Task) -> None:
-            if self._predownload_tasks.get(guild_id) is completed:
-                self._predownload_tasks.pop(guild_id, None)
-            if not completed.cancelled() and completed.exception() is not None:
-                logger.warning(
-                    "Predownload task failed for guild %s: %s",
-                    guild_id,
-                    completed.exception(),
-                )
-                self.increment_metric("predownload_failures")
-
-        task.add_done_callback(on_done)
 
     def health_snapshot(self) -> dict[str, object]:
         """Return a non-blocking snapshot suitable for diagnostics and support."""
@@ -154,7 +129,6 @@ class ObibokBot(commands.Bot):
             "playing_guilds": sum(1 for state in states if state.is_playing),
             "active_streams": len(self._active_streams),
             "monitor_tasks": sum(not task.done() for task in self._monitor_tasks.values()),
-            "predownload_tasks": sum(not task.done() for task in self._predownload_tasks.values()),
             "background_tasks": sum(not task.done() for task in self._background_tasks),
             "lease_owner": self.playback_lease.owner_guild_id,
         }
@@ -191,15 +165,11 @@ class ObibokBot(commands.Bot):
         self._background_tasks.clear()
         for guild_id in list(self._active_streams):
             self._stop_stream(guild_id)
-        predownload_tasks = list(self._predownload_tasks.values())
-        for task in predownload_tasks:
-            task.cancel()
-        self._predownload_tasks.clear()
         monitor_tasks = list(self._monitor_tasks.values())
         for task in monitor_tasks:
             task.cancel()
         self._monitor_tasks.clear()
-        await asyncio.gather(*predownload_tasks, *monitor_tasks, return_exceptions=True)
+        await asyncio.gather(*monitor_tasks, return_exceptions=True)
         await super().close()
 
     async def _health_watchdog(self) -> None:

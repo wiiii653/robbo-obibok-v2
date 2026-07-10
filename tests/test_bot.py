@@ -90,18 +90,6 @@ class TestBotStateManagement:
         assert snapshot["uptime_seconds"] >= 0
         assert snapshot["metrics"]["playback_failures"] == 0
 
-    @pytest.mark.asyncio
-    async def test_completed_predownload_task_is_removed(self, tmp_path):
-        bot = _make_bot(tmp_path)
-        bot.engine.predownload_next = AsyncMock(return_value=None)
-        state = bot.get_state(12345)
-
-        bot._schedule_predownload(12345, state)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
-        assert 12345 not in bot._predownload_tasks
-
 
 class TestFavoritesLogic:
     def test_toggle_favorite(self, tmp_path):

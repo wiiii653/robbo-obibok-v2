@@ -104,7 +104,6 @@ class CollectionCog(commands.Cog):
         if active:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(ctx.guild.id)
-            self.bot._cancel_predownload(ctx.guild.id)
             self.bot._cancel_monitor(ctx.guild.id)
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
