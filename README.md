@@ -179,8 +179,9 @@ Run as a background service:
 sudo cp deploy/robbo-obibok.service /etc/systemd/system/
 
 # Store token in the environment file used by the service
-printf 'DISCORD_BOT_TOKEN="%s"\n' "YOUR_TOKEN_HERE" > ~/robbo-obibok-v2/.env
-chmod 600 ~/robbo-obibok-v2/.env
+# Run this from the project directory and ensure EnvironmentFile points here.
+printf 'DISCORD_BOT_TOKEN="%s"\n' "YOUR_TOKEN_HERE" > .env
+chmod 600 .env
 
 # Enable and start
 sudo systemctl daemon-reload
