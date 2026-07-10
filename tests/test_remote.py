@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.error import URLError
 
 from src.remote import download_remote_track, is_remote_track, remote_cache_path
 
@@ -63,3 +64,35 @@ def test_download_remote_track_reuses_nonempty_cache(tmp_path, monkeypatch):
     result = download_remote_track("https://example.com/cached.mod", str(output))
     assert result == str(output)
     assert output.read_bytes() == b"already-downloaded"
+
+
+def test_download_remote_track_retries_transient_network_failure(tmp_path, monkeypatch):
+    attempts = 0
+
+    class FakeResponse:
+        def __init__(self):
+            self.remaining = b"ok"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self, size: int) -> bytes:
+            data, self.remaining = self.remaining[:size], self.remaining[size:]
+            return data
+
+    def flaky_urlopen(request, timeout=0):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise URLError("temporary failure")
+        return FakeResponse()
+
+    monkeypatch.setattr("src.remote.urlopen", flaky_urlopen)
+    monkeypatch.setattr("src.remote.time.sleep", lambda _: None)
+    output = tmp_path / "retry.mod"
+
+    assert download_remote_track("https://example.com/retry.mod", str(output)) == str(output)
+    assert attempts == 3

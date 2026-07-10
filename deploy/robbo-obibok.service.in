@@ -1,0 +1,29 @@
+[Unit]
+Description=Robbo Obibok v2 - Discord Chiptune Radio
+Documentation=https://github.com/wiiii653/robbo-obibok-v2
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=@APP_GROUP@
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@APP_DIR@/.env
+Environment=PYTHONPATH=@APP_DIR@
+ExecStart=@APP_DIR@/venv/bin/python3 -u -m src
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=4096
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

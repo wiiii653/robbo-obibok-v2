@@ -586,6 +586,10 @@ class PlaybackCog(commands.Cog):
                 await self.bot.monitor.monitor_loop(
                     state, on_track_end, on_empty, get_voice_members
                 )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Monitor task failed for guild %s", guild_id)
             finally:
                 current = self.bot._monitor_tasks.get(guild_id)
                 if current is asyncio.current_task():

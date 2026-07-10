@@ -323,6 +323,8 @@ class PlaybackEngine:
         if is_youtube_url(track):
             return await asyncio.to_thread(download_youtube_track, track, self.root_dir)
         if uses_module_cache(track):
-            return download_modarchive_module(track, root_dir=self.root_dir)
+            return await asyncio.to_thread(
+                download_modarchive_module, track, root_dir=self.root_dir
+            )
         output_path = remote_cache_path(self.root_dir, track)
-        return download_remote_track(track, output_path)
+        return await asyncio.to_thread(download_remote_track, track, output_path)

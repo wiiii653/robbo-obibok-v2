@@ -56,6 +56,9 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "integration: requires host audio dependencies and is opt-in",
+]
 
 [tool.coverage.run]
 source = ["src"]

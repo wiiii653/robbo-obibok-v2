@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -73,6 +74,31 @@ class TestBotStateManagement:
             bot._track_np_message(i, {"filepath": f"t{i}.sap"})
         assert len(bot._np_messages) == 3
         assert 0 not in bot._np_messages
+
+    def test_health_snapshot_reports_runtime_state(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        state = bot.get_state(12345)
+        state.is_playing = True
+
+        snapshot = bot.health_snapshot()
+
+        assert snapshot["status"] == "ok"
+        assert snapshot["tracked_states"] == 1
+        assert snapshot["playing_guilds"] == 1
+        assert snapshot["active_streams"] == 0
+        assert snapshot["lease_owner"] is None
+
+    @pytest.mark.asyncio
+    async def test_completed_predownload_task_is_removed(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        bot.engine.predownload_next = AsyncMock(return_value=None)
+        state = bot.get_state(12345)
+
+        bot._schedule_predownload(12345, state)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert 12345 not in bot._predownload_tasks
 
 
 class TestFavoritesLogic:

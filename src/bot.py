@@ -117,6 +117,33 @@ class ObibokBot(commands.Bot):
         task = asyncio.create_task(self.engine.predownload_next(state))
         self._predownload_tasks[guild_id] = task
 
+        def on_done(completed: asyncio.Task) -> None:
+            if self._predownload_tasks.get(guild_id) is completed:
+                self._predownload_tasks.pop(guild_id, None)
+            if not completed.cancelled() and completed.exception() is not None:
+                logger.warning(
+                    "Predownload task failed for guild %s: %s",
+                    guild_id,
+                    completed.exception(),
+                )
+
+        task.add_done_callback(on_done)
+
+    def health_snapshot(self) -> dict[str, object]:
+        """Return a non-blocking snapshot suitable for diagnostics and support."""
+        states = list(self._states.values())
+        return {
+            "status": "ok" if not self.is_closed() else "stopping",
+            "guilds": len(self.guilds),
+            "tracked_states": len(states),
+            "playing_guilds": sum(1 for state in states if state.is_playing),
+            "active_streams": len(self._active_streams),
+            "monitor_tasks": sum(not task.done() for task in self._monitor_tasks.values()),
+            "predownload_tasks": sum(not task.done() for task in self._predownload_tasks.values()),
+            "background_tasks": sum(not task.done() for task in self._background_tasks),
+            "lease_owner": self.playback_lease.owner_guild_id,
+        }
+
     def get_state(self, guild_id: int) -> PlaybackState:
         if guild_id not in self._states:
             self._states[guild_id] = PlaybackState(guild_id=guild_id, is_looping=self.default_loop)
@@ -149,12 +176,15 @@ class ObibokBot(commands.Bot):
         self._background_tasks.clear()
         for guild_id in list(self._active_streams):
             self._stop_stream(guild_id)
-        for task in list(self._predownload_tasks.values()):
+        predownload_tasks = list(self._predownload_tasks.values())
+        for task in predownload_tasks:
             task.cancel()
         self._predownload_tasks.clear()
-        for task in list(self._monitor_tasks.values()):
+        monitor_tasks = list(self._monitor_tasks.values())
+        for task in monitor_tasks:
             task.cancel()
         self._monitor_tasks.clear()
+        await asyncio.gather(*predownload_tasks, *monitor_tasks, return_exceptions=True)
         await super().close()
 
     async def _health_watchdog(self) -> None:

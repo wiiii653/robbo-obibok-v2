@@ -35,6 +35,7 @@ class AppConfig:
     playback: PlaybackConfig = field(default_factory=PlaybackConfig)
     auto: AutoConfig = field(default_factory=AutoConfig)
     archive_path: str = "archiwum"
+    format_volumes: dict[str, int] = field(default_factory=dict)
 
     @property
     def root_dir(self) -> str:
@@ -51,6 +52,9 @@ def _require_mapping(data: dict, key: str) -> dict:
 
 
 def validate_config(data: dict) -> None:
+    if "token" in data:
+        raise ValueError("config.token is not supported; set DISCORD_BOT_TOKEN in the environment")
+
     if not isinstance(data.get("command_prefix", "!"), str) or not data.get("command_prefix", "!"):
         raise ValueError("config.command_prefix must not be empty")
 
@@ -89,8 +93,30 @@ def validate_config(data: dict) -> None:
     if "archive" in data:
         archive = _require_mapping(data, "archive")
         archive_path = archive.get("path", "archiwum")
-        if "path" in archive and (not isinstance(archive_path, str) or not archive_path):
+        archive_parts = Path(archive_path).parts if isinstance(archive_path, str) else ()
+        if "path" in archive and (
+            not isinstance(archive_path, str)
+            or not archive_path
+            or Path(archive_path).is_absolute()
+            or ".." in archive_parts
+        ):
             raise ValueError("config.archive.path must be a non-empty string")
+
+    if "format_volumes" in data:
+        volumes = data["format_volumes"]
+        if not isinstance(volumes, dict):
+            raise ValueError("config.format_volumes must be a mapping")
+        for extension, volume in volumes.items():
+            if (
+                not isinstance(extension, str)
+                or not extension
+                or not isinstance(volume, int)
+                or isinstance(volume, bool)
+                or not 0 <= volume <= 200
+            ):
+                raise ValueError(
+                    "config.format_volumes values must map non-empty extensions to integers from 0 to 200"
+                )
 
 
 def load_config(config_path: str | Path | None = None) -> AppConfig:
@@ -107,12 +133,13 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
 
     validate_config(data)
 
-    token = os.environ.get("DISCORD_BOT_TOKEN", data.get("token", ""))
+    token = os.environ.get("DISCORD_BOT_TOKEN", "")
 
     audio_data = _require_mapping(data, "audio")
     playback_data = _require_mapping(data, "playback")
     auto_data = _require_mapping(data, "auto")
     archive_data = _require_mapping(data, "archive")
+    format_volumes = data.get("format_volumes", {})
 
     return AppConfig(
         token=token,
@@ -130,4 +157,5 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             empty_timeout=auto_data.get("empty_timeout", 60),
         ),
         archive_path=archive_data.get("path", "archiwum"),
+        format_volumes=dict(format_volumes),
     )
