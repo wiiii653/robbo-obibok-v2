@@ -54,6 +54,15 @@ class ObibokBot(commands.Bot):
         self._playback_sessions: dict[int, int] = {}
         self._np_messages_max = 200
         self._started_at = time.monotonic()
+        self._metrics: dict[str, int] = {
+            "playback_failures": 0,
+            "stream_restarts": 0,
+            "predownload_failures": 0,
+        }
+
+    def increment_metric(self, name: str) -> None:
+        if name in self._metrics:
+            self._metrics[name] += 1
 
     def _track_np_message(self, msg_id: int, data: dict[str, Any]) -> None:
         if len(self._np_messages) >= self._np_messages_max:
@@ -83,6 +92,7 @@ class ObibokBot(commands.Bot):
 
     def _on_stream_end(self, guild_id: int, error: Exception | None, source_id: int) -> None:
         if error:
+            self.increment_metric("stream_restarts")
             logger.warning("Stream ended with error for guild %s: %s", guild_id, error)
         current = self._active_streams.get(guild_id)
         if current is not None and getattr(current, "source_id", None) == source_id:
@@ -128,6 +138,7 @@ class ObibokBot(commands.Bot):
                     guild_id,
                     completed.exception(),
                 )
+                self.increment_metric("predownload_failures")
 
         task.add_done_callback(on_done)
 
@@ -137,6 +148,7 @@ class ObibokBot(commands.Bot):
         return {
             "status": "ok" if not self.is_closed() else "stopping",
             "uptime_seconds": round(max(0.0, time.monotonic() - self._started_at), 1),
+            "metrics": dict(self._metrics),
             "guilds": len(self.guilds),
             "tracked_states": len(states),
             "playing_guilds": sum(1 for state in states if state.is_playing),

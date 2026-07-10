@@ -88,6 +88,7 @@ class TestBotStateManagement:
         assert snapshot["active_streams"] == 0
         assert snapshot["lease_owner"] is None
         assert snapshot["uptime_seconds"] >= 0
+        assert snapshot["metrics"]["playback_failures"] == 0
 
     @pytest.mark.asyncio
     async def test_completed_predownload_task_is_removed(self, tmp_path):
@@ -470,6 +471,53 @@ class TestPlaybackCommandBranches:
 
         ctx.send.assert_awaited_once_with("Queue empty.")
 
+    @pytest.mark.asyncio
+    async def test_stop_releases_voice_and_lease(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client.disconnect = AsyncMock()
+        ctx.send = AsyncMock()
+
+        await cog.stop.callback(cog, ctx)
+
+        ctx.voice_client.disconnect.assert_awaited_once()
+        ctx.send.assert_awaited_once_with("Stopped.")
+        assert bot.playback_lease.owner_guild_id is None
+
+    @pytest.mark.asyncio
+    async def test_loop_toggles_state(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.loop.callback(cog, ctx)
+
+        assert state.is_looping is True
+        ctx.send.assert_awaited_once_with("Loop: ON")
+
+    @pytest.mark.asyncio
+    async def test_clear_releases_voice_and_queue(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        state = bot.get_state(123)
+        state.queue = ["song.sap"]
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client.disconnect = AsyncMock()
+        ctx.send = AsyncMock()
+
+        await cog.clear.callback(cog, ctx)
+
+        assert state.queue == []
+        ctx.voice_client.disconnect.assert_awaited_once()
+        ctx.send.assert_awaited_once_with("Queue cleared.")
+
 
 class TestFavoritesCommandBranches:
     @pytest.mark.asyncio
@@ -542,3 +590,28 @@ class TestFavoritesCommandBranches:
 
         assert ctx.send.await_args_list[0].args == ("No favorites to save.",)
         assert "not found" in ctx.send.await_args_list[1].args[0]
+
+    @pytest.mark.asyncio
+    async def test_blacklist_remove_valid_item(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = FavoritesCog(bot)
+        bot.engine.blacklist.add(7, "folder/song.sap")
+        ctx = MagicMock()
+        ctx.author.id = 7
+        ctx.send = AsyncMock()
+
+        await cog.blkrm.callback(cog, ctx, 1)
+
+        ctx.send.assert_awaited_once_with("Removed `song.sap`.")
+
+    @pytest.mark.asyncio
+    async def test_playlists_reports_empty_library(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        bot.root_dir = str(tmp_path)
+        cog = FavoritesCog(bot)
+        ctx = MagicMock()
+        ctx.send = AsyncMock()
+
+        await cog.playlists.callback(cog, ctx)
+
+        ctx.send.assert_awaited_once_with("No saved playlists.")
