@@ -45,6 +45,8 @@ class TestFavorites:
         favs2 = Favorites(str(tmp_path))
         assert favs2.has_track(1, "test.sap") is True
         assert len(favs2.get_tracks(1)) == 1
+        stored = json.loads((tmp_path / "favorites.json").read_text())
+        assert stored["schema_version"] == 2
 
     def test_ignores_malformed_entries(self, tmp_path):
         path = tmp_path / "favorites.json"
@@ -85,6 +87,8 @@ class TestPlaylistLibrary:
         assert loaded["name"] == "My Playlist"
         assert loaded["author"] == "TestUser"
         assert len(loaded["tracks"]) == 1
+        stored = json.loads((tmp_path / "var" / "playlists" / "My Playlist.json").read_text())
+        assert stored["schema_version"] == 2
 
     def test_list_playlists(self, tmp_path):
         lib = PlaylistLibrary(str(tmp_path))

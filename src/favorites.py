@@ -7,6 +7,9 @@ from pathlib import Path
 
 from .persistence import load_json, save_json
 
+FAVORITES_SCHEMA_VERSION = 2
+PLAYLIST_SCHEMA_VERSION = 2
+
 
 def _normalize_track_entry(entry: object) -> dict | None:
     if not isinstance(entry, dict):
@@ -38,6 +41,9 @@ def _normalize_track_entry(entry: object) -> dict | None:
 def _normalize_playlist_record(data: object) -> dict | None:
     if not isinstance(data, dict):
         return None
+    schema_version = data.get("schema_version", 1)
+    if schema_version not in (1, PLAYLIST_SCHEMA_VERSION):
+        return None
     tracks = data.get("tracks", [])
     if not isinstance(tracks, list):
         return None
@@ -45,6 +51,7 @@ def _normalize_playlist_record(data: object) -> dict | None:
         item for item in (_normalize_track_entry(track) for track in tracks) if item
     ]
     return {
+        "schema_version": schema_version,
         "name": data.get("name", ""),
         "author": data.get("author", ""),
         "author_id": data.get("author_id", 0),
@@ -85,7 +92,7 @@ class Favorites:
         self._loaded = True
 
     def _save(self) -> None:
-        save_json(self._filepath, self._data)
+        save_json(self._filepath, {"schema_version": FAVORITES_SCHEMA_VERSION, **self._data})
 
     def _track_index(self, user_id: int, filepath: str) -> int | None:
         self._ensure_loaded()
@@ -188,6 +195,7 @@ class PlaylistLibrary:
         safe = self._safe_name(name)
         filepath = self._dir / f"{safe}.json"
         data = {
+            "schema_version": PLAYLIST_SCHEMA_VERSION,
             "name": name,
             "author": author_name,
             "author_id": author_id,

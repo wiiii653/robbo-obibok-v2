@@ -37,6 +37,7 @@ class ToolsCog(commands.Cog):
         snapshot = self.bot.health_snapshot()
         embed = discord.Embed(title="Radio Health", color=0x2ECC71)
         embed.add_field(name="Status", value=str(snapshot["status"]), inline=True)
+        embed.add_field(name="Uptime", value=f"{snapshot['uptime_seconds']}s", inline=True)
         embed.add_field(name="Guilds", value=str(snapshot["guilds"]), inline=True)
         embed.add_field(name="Playing", value=str(snapshot["playing_guilds"]), inline=True)
         embed.add_field(name="Active Streams", value=str(snapshot["active_streams"]), inline=True)

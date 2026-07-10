@@ -20,6 +20,7 @@ async def test_health_command_sends_runtime_snapshot():
         "monitor_tasks": 1,
         "predownload_tasks": 0,
         "lease_owner": 123,
+        "uptime_seconds": 12.3,
     }
     ctx = MagicMock()
     ctx.send = AsyncMock()

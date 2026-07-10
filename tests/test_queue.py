@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.models import PlaybackState
+from src.persistence import load_json
 from src.queue import (
     Blacklist,
     can_restore_queue,
@@ -205,6 +206,8 @@ class TestBlacklist:
         bl.add(1, "bad.sap")
         bl2 = Blacklist(str(tmp_path))
         assert bl2.is_blacklisted("bad.sap") is True
+        stored = load_json(tmp_path / "blacklist.json")
+        assert stored["schema_version"] == 2
 
     def test_ignores_malformed_entries(self, tmp_path):
         path = tmp_path / "blacklist.json"
