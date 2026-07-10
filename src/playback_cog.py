@@ -237,10 +237,12 @@ class PlaybackCog(commands.Cog):
             return None
         return ctx.author.voice.channel
 
-    def _load_collection(self, state: PlaybackState) -> None:
+    async def _load_collection(self, state: PlaybackState) -> None:
         """Load track list for the current collection if not already cached."""
         if not state.tracks:
-            paths = load_raw_paths(state.collection_mode, self.bot.root_dir)
+            paths = await asyncio.to_thread(
+                load_raw_paths, state.collection_mode, self.bot.root_dir
+            )
             if paths:
                 state.tracks = paths
 
@@ -277,8 +279,8 @@ class PlaybackCog(commands.Cog):
             return
 
         if query:
-            self._load_collection(state)
-            results = self.bot.engine.search(query, state)
+            await self._load_collection(state)
+            results = await asyncio.to_thread(self.bot.engine.search, query, state)
             if not results:
                 return await ctx.send(f"No tracks matching `{query}`.")
             if not self.bot.try_acquire_lease(ctx.guild):
@@ -410,9 +412,9 @@ class PlaybackCog(commands.Cog):
         if not await self._can_control_audio(ctx):
             return
         if level < 0:
-            vol = self.bot.engine.audio.get_volume()
+            vol = await asyncio.to_thread(self.bot.engine.audio.get_volume)
             return await ctx.send(f"Volume: {vol}%" if vol is not None else "Volume: unknown")
-        self.bot.engine.audio.set_volume(level)
+        await asyncio.to_thread(self.bot.engine.audio.set_volume, level)
         await ctx.send(f"Volume set to {level}%")
 
     @commands.command()
@@ -524,7 +526,9 @@ class PlaybackCog(commands.Cog):
                         if s.position >= len(s.queue):
                             s.queue = []
                             s.position = 0
-                            next_t = await self.bot.engine.start_radio(s, user_id=0)
+                            next_t = await self.bot.engine.start_radio(
+                                s, user_id=s.queue_owner_user_id
+                            )
                             if next_t:
                                 next_t = await self.bot.engine.play_track(s)
                         else:
@@ -540,7 +544,7 @@ class PlaybackCog(commands.Cog):
                 _stuck_count = 0
                 s.queue = []
                 s.position = 0
-                track = await self.bot.engine.start_radio(s, user_id=0)
+                track = await self.bot.engine.start_radio(s, user_id=s.queue_owner_user_id)
                 if track:
                     # start_radio only builds the queue — need play_track to
                     # resolve the path and actually start audio playback
