@@ -1,8 +1,7 @@
 # Robbo Obibok v2 — Configuration
 # Copy this file to config.yaml and adjust to your needs.
 
-# Discord bot token (can also be set via DISCORD_BOT_TOKEN env var)
-# token: "YOUR_DISCORD_BOT_TOKEN_HERE"
+# Discord bot token must be provided via DISCORD_BOT_TOKEN.
 
 # Command prefix (default: !)
 command_prefix: "!"

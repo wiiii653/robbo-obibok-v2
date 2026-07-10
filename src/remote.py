@@ -8,6 +8,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from urllib.error import URLError
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 MAX_REMOTE_DOWNLOAD_BYTES = 128 * 1024 * 1024
 DEFAULT_REMOTE_TIMEOUT = 30
+REMOTE_DOWNLOAD_ATTEMPTS = 3
+REMOTE_RETRY_DELAY_SECONDS = 1.0
 MAX_MODULE_DOWNLOAD_BYTES = 64 * 1024 * 1024
 
 
@@ -133,23 +136,39 @@ def _cache_dir(root_dir: str, *parts: str) -> Path:
 
 
 def _download_bytes(url: str, *, max_bytes: int, timeout: int = DEFAULT_REMOTE_TIMEOUT) -> bytes:
-    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(request, timeout=timeout) as response:
-        headers = getattr(response, "headers", {})
-        content_length = headers.get("Content-Length")
-        if content_length and int(content_length) > max_bytes:
-            raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = response.read(min(1024 * 1024, max_bytes - total + 1))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            total += len(chunk)
-            if total > max_bytes:
-                raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
-    return b"".join(chunks)
+    for attempt in range(1, REMOTE_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urlopen(request, timeout=timeout) as response:
+                headers = getattr(response, "headers", {})
+                content_length = headers.get("Content-Length")
+                if content_length and int(content_length) > max_bytes:
+                    raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    chunk = response.read(min(1024 * 1024, max_bytes - total + 1))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError(f"remote track exceeds {max_bytes} bytes: {url}")
+            return b"".join(chunks)
+        except (OSError, URLError, TimeoutError) as exc:
+            if attempt == REMOTE_DOWNLOAD_ATTEMPTS:
+                raise
+            delay = REMOTE_RETRY_DELAY_SECONDS * 2 ** (attempt - 1)
+            logger.warning(
+                "Remote download attempt %d/%d failed for %s: %s; retrying in %.1fs",
+                attempt,
+                REMOTE_DOWNLOAD_ATTEMPTS,
+                url,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def _valid_cached_file(path: Path) -> bool:

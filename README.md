@@ -81,6 +81,7 @@ Complete rewrite with a **flat, minimal architecture** — 24 source modules ins
 | `!blkrm <n>` | Remove track N from blacklist |
 | **Tools & Info** | |
 | `!help` | Show command reference |
+| `!health` | Show runtime health diagnostics |
 | `!stats` | Show radio stats (uptime, tracks played) |
 | `!export` | Export queue as plain text |
 | `!ocko` | Display an ASCII owl |
@@ -160,6 +161,9 @@ make test        # Unit tests
 make check       # Tests, coverage, lint, and formatting checks
 make lint        # Ruff linter
 make format      # Ruff formatter
+
+# Optional host checks for Audacious, FFmpeg, and PulseAudio/PipeWire
+RUN_INTEGRATION=1 venv/bin/pytest -m integration
 ```
 
 ## Invite the Bot
@@ -175,21 +179,22 @@ make format      # Ruff formatter
 Run as a background service:
 
 ```bash
-# Install the system service
-sudo cp deploy/robbo-obibok.service /etc/systemd/system/
+# Install dependencies and create the virtualenv
+make install
 
 # Store token in the environment file used by the service
-# Run this from the project directory and ensure EnvironmentFile points here.
 printf 'DISCORD_BOT_TOKEN="%s"\n' "YOUR_TOKEN_HERE" > .env
 chmod 600 .env
 
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable --now robbo-obibok
+# Generate, install, enable, and start a service for this checkout
+sudo deploy/install-systemd.sh
 
 # Check logs
 sudo journalctl -u robbo-obibok -f
 ```
+
+The installer accepts optional arguments for a different checkout and service account:
+`sudo deploy/install-systemd.sh /absolute/project/path app-user app-group`.
 
 ## Building Local Indexes
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.config import AppConfig, AudioConfig, AutoConfig, PlaybackConfig, load_config
 
 
@@ -61,6 +63,31 @@ class TestLoadConfig:
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token")
         config = load_config()
         assert config.token == "test-token"
+
+    def test_token_in_yaml_is_rejected(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("token: secret\n")
+        with pytest.raises(ValueError, match="DISCORD_BOT_TOKEN"):
+            load_config(config_path)
+
+    @pytest.mark.parametrize("path", ["/var/lib/robbo/archive", "../archive", "foo/../../archive"])
+    def test_archive_path_must_stay_relative(self, tmp_path, path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"archive:\n  path: {path}\n")
+        with pytest.raises(ValueError, match="archive.path"):
+            load_config(config_path)
+
+    def test_format_volumes_are_loaded_and_validated(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("format_volumes:\n  sid: 120\n")
+        config = load_config(config_path)
+        assert config.format_volumes == {"sid": 120}
+
+    def test_format_volume_out_of_range_is_rejected(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("format_volumes:\n  sid: 201\n")
+        with pytest.raises(ValueError, match="format_volumes"):
+            load_config(config_path)
 
     def test_allows_sparse_config(self, tmp_path):
         config_path = tmp_path / "config.yaml"

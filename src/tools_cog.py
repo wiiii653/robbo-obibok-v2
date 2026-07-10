@@ -32,6 +32,24 @@ class ToolsCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command()
+    async def health(self, ctx: commands.Context) -> None:
+        """Show non-blocking runtime health diagnostics."""
+        snapshot = self.bot.health_snapshot()
+        embed = discord.Embed(title="Radio Health", color=0x2ECC71)
+        embed.add_field(name="Status", value=str(snapshot["status"]), inline=True)
+        embed.add_field(name="Guilds", value=str(snapshot["guilds"]), inline=True)
+        embed.add_field(name="Playing", value=str(snapshot["playing_guilds"]), inline=True)
+        embed.add_field(name="Active Streams", value=str(snapshot["active_streams"]), inline=True)
+        embed.add_field(name="Monitor Tasks", value=str(snapshot["monitor_tasks"]), inline=True)
+        embed.add_field(
+            name="Predownload Tasks", value=str(snapshot["predownload_tasks"]), inline=True
+        )
+        embed.add_field(
+            name="Lease Owner", value=str(snapshot["lease_owner"] or "none"), inline=True
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command()
     async def ocko(self, ctx: commands.Context) -> None:
         import random
 
@@ -132,7 +150,9 @@ class ToolsCog(commands.Cog):
 
         embed.add_field(
             name="\U0001f527 Tools",
-            value=("`!stats` — Show bot stats\n`!ocko` — \U0001f989 ASCII owl"),
+            value=(
+                "`!stats` — Show bot stats\n`!health` — Runtime diagnostics\n`!ocko` — \U0001f989 ASCII owl"
+            ),
             inline=False,
         )
 
