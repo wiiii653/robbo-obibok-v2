@@ -24,6 +24,9 @@ class TestLoadJson:
         filepath.write_text("not json {{{")
         result = load_json(filepath)
         assert result is None
+        backups = list(tmp_path.glob("invalid.json.corrupt-*"))
+        assert len(backups) == 1
+        assert backups[0].read_text() == "not json {{{"
 
 
 class TestSaveJson:
@@ -39,6 +42,12 @@ class TestSaveJson:
         filepath = tmp_path / "sub" / "dir" / "file.json"
         assert save_json(filepath, data) is True
         assert filepath.exists()
+
+    def test_save_and_load_create_lock_file(self, tmp_path):
+        filepath = tmp_path / "locked.json"
+        assert save_json(filepath, {"ok": True}) is True
+        assert load_json(filepath) == {"ok": True}
+        assert (tmp_path / ".locked.json.lock").exists()
 
 
 class TestLoadTracksFromCache:

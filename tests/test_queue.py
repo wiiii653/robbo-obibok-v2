@@ -96,6 +96,7 @@ class TestQueuePersistence:
         assert loaded["is_looping"] is True
         assert loaded["collection_mode"] == "hvsc"
         assert loaded["queue_collection_ids"] == ["hvsc", "hvsc"]
+        assert loaded["schema_version"] == 2
 
     def test_load_nonexistent(self, tmp_path):
         assert load_queue(99999, str(tmp_path)) is None
@@ -119,6 +120,25 @@ class TestQueuePersistence:
         normalized = normalize_queue_record(data)
         assert normalized is not None
         assert normalized["queue"] == ["a.sap", "b.sap"]
+
+    def test_normalize_queue_record_accepts_v1_records(self):
+        data = {
+            "queue": ["a.sap", "b.sap"],
+            "position": 0,
+            "is_looping": False,
+            "collection_mode": "asma",
+        }
+        assert normalize_queue_record(data) is not None
+
+    def test_normalize_queue_record_rejects_unknown_schema(self):
+        data = {
+            "schema_version": 99,
+            "queue": ["a.sap", "b.sap"],
+            "position": 0,
+            "is_looping": False,
+            "collection_mode": "asma",
+        }
+        assert normalize_queue_record(data) is None
 
     def test_can_restore_queue(self):
         saved = {

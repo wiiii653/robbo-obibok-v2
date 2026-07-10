@@ -7,9 +7,14 @@ from pathlib import Path
 from .models import PlaybackState
 from .persistence import load_json, save_json
 
+QUEUE_SCHEMA_VERSION = 2
+
 
 def normalize_queue_record(data: object) -> dict | None:
     if not isinstance(data, dict):
+        return None
+    schema_version = data.get("schema_version", 1)
+    if schema_version not in (1, QUEUE_SCHEMA_VERSION):
         return None
     queue = data.get("queue")
     position = data.get("position")
@@ -36,6 +41,7 @@ def normalize_queue_record(data: object) -> dict | None:
     ):
         return None
     return {
+        "schema_version": schema_version,
         "queue": list(queue),
         "queue_collection_ids": list(queue_collection_ids),
         "position": position,
@@ -107,6 +113,7 @@ def save_queue(state: PlaybackState, root_dir: str) -> bool:
     queue_dir.mkdir(parents=True, exist_ok=True)
     filepath = queue_dir / f"{state.guild_id}.json"
     data = {
+        "schema_version": QUEUE_SCHEMA_VERSION,
         "queue": state.queue,
         "queue_collection_ids": state.queue_collection_ids
         if len(state.queue_collection_ids) == len(state.queue)
