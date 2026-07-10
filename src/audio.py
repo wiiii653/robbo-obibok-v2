@@ -25,6 +25,7 @@ FORMAT_VOLUMES: dict[str, int] = {
 }
 
 _audacious_ready = False
+_audacious_process: subprocess.Popen | None = None
 SUPPORTED_AUDACIOUS_VERSION = "4.6.1"
 AUDACIOUS_VERSION_RE = re.compile(r"\b(\d+\.\d+\.\d+)\b")
 
@@ -88,14 +89,14 @@ def check_audacious_version(required_version: str = SUPPORTED_AUDACIOUS_VERSION)
 
 
 def start_player(sink_name: str = "robbo_bot") -> bool:
-    global _audacious_ready
+    global _audacious_process, _audacious_ready
     if _audacious_ready:
         if _is_audacious_alive():
             return True
         _audacious_ready = False
 
-    # Kill any stale audacious from a previous bot instance so the new
-    # one has a clean D-Bus session and playlist state.
+    # Never terminate a desktop user's Audacious session.  This process owns
+    # only the child it starts and can safely clean up that child on restart.
     kill_player()
 
     proc = subprocess.Popen(
@@ -104,6 +105,7 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
         stderr=subprocess.DEVNULL,
         env={**os.environ, "PULSE_SINK": sink_name},
     )
+    _audacious_process = proc
     try:
         for _ in range(20):
             version = get_audacious_version()
@@ -124,11 +126,26 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
                     proc.kill()
                 except OSError:
                     pass
+        if not _audacious_ready:
+            _audacious_process = None
 
 
 def kill_player() -> None:
+    global _audacious_process, _audacious_ready
     _audtool_call("playback-stop")
-    subprocess.run(["pkill", "-x", "audacious"], capture_output=True)
+    proc = _audacious_process
+    _audacious_process = None
+    _audacious_ready = False
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            proc.kill()
+        except OSError:
+            pass
 
 
 UNSUPPORTED_SAP_TYPES = {"D", "E"}
@@ -340,12 +357,15 @@ def is_playing() -> bool:
 
 
 def output_length() -> int:
-    result = subprocess.run(
-        ["audtool", "current-song-output-length-seconds"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["audtool", "current-song-output-length-seconds"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return -1
     try:
         return int(result.stdout.strip())
     except (ValueError, OSError):
@@ -353,12 +373,15 @@ def output_length() -> int:
 
 
 def song_length() -> int:
-    result = subprocess.run(
-        ["audtool", "current-song-length-seconds"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["audtool", "current-song-length-seconds"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return -1
     try:
         return int(result.stdout.strip())
     except (ValueError, OSError):
@@ -367,42 +390,56 @@ def song_length() -> int:
 
 def current_song() -> str:
     """Return the song title as reported by Audacious (audtool current-song)."""
-    result = subprocess.run(
-        ["audtool", "current-song"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["audtool", "current-song"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
     return result.stdout.strip()
 
 
 def current_song_filename() -> str:
     """Return the full filepath of the currently playing song."""
-    result = subprocess.run(
-        ["audtool", "current-song-filename"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["audtool", "current-song-filename"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
     return result.stdout.strip()
 
 
 def get_volume(sink_name: str) -> int | None:
-    result = subprocess.run(
-        ["pactl", "get-sink-volume", sink_name],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["pactl", "get-sink-volume", sink_name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     m = re.search(r"(\d+)%", result.stdout)
     return int(m.group(1)) if m else None
 
 
 def set_volume(sink_name: str, volume: int) -> None:
     clamped = max(MIN_VOLUME, min(MAX_VOLUME, volume))
-    subprocess.run(
-        ["pactl", "set-sink-volume", sink_name, f"{clamped}%"],
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            ["pactl", "set-sink-volume", sink_name, f"{clamped}%"],
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        logger.warning("Could not set PulseAudio sink volume for %s", sink_name)
 
 
 def set_volume_for_playback(filepath: str, sink_name: str) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from .collection_loader import flip_collection, get_collection, load_raw_paths
@@ -46,18 +47,24 @@ class CollectionCog(commands.Cog):
             return
         state = self.bot.get_state(ctx.guild.id)
         if not state.tracks:
-            paths = load_raw_paths(state.collection_mode, self.bot.root_dir)
+            paths = await asyncio.to_thread(
+                load_raw_paths, state.collection_mode, self.bot.root_dir
+            )
             if paths:
                 state.tracks = paths
-        results = self.bot.engine.search(query, state)
+        results = await asyncio.to_thread(self.bot.engine.search, query, state)
         if not results:
             return await ctx.send(f"No results for `{query}`.")
         state.search_results = results
         state.search_collection_id = state.collection_mode
-        lines = [
-            self.bot.engine.describe_search_result(r, state.collection_mode, i + 1)
-            for i, r in enumerate(results[:10])
-        ]
+        lines = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    self.bot.engine.describe_search_result, r, state.collection_mode, i + 1
+                )
+                for i, r in enumerate(results[:10])
+            )
+        )
         await ctx.send("\n".join(lines))
 
     @commands.command(aliases=["c64", "sid"])

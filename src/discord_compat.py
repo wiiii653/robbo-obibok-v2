@@ -11,12 +11,19 @@ try:  # pragma: no cover - exercised indirectly when discord.py is installed
     from discord.ext import commands as _commands
 except ModuleNotFoundError:  # pragma: no cover - covered by local tests
 
+    @dataclass(slots=True)
+    class _EmbedField:
+        name: str
+        value: str
+        inline: bool = True
+
+
     class _Embed:
         def __init__(self, *, title: str = "", description: str = "", color: int = 0) -> None:
             self.title = title
             self.description = description
             self.color = color
-            self.fields: list[dict[str, Any]] = []
+            self.fields: list[_EmbedField] = []
             self.footer: dict[str, Any] = {}
 
         @classmethod
@@ -26,12 +33,20 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
                 description=data.get("description", ""),
                 color=data.get("color", 0),
             )
-            embed.fields = list(data.get("fields", []))
+            embed.fields = [
+                _EmbedField(
+                    name=str(field.get("name", "")),
+                    value=str(field.get("value", "")),
+                    inline=bool(field.get("inline", True)),
+                )
+                for field in data.get("fields", [])
+                if isinstance(field, dict)
+            ]
             embed.footer = dict(data.get("footer", {}))
             return embed
 
         def add_field(self, *, name: str, value: str, inline: bool = True) -> None:
-            self.fields.append({"name": name, "value": value, "inline": inline})
+            self.fields.append(_EmbedField(name=name, value=value, inline=inline))
 
         def set_footer(self, *, text: str = "") -> None:
             self.footer = {"text": text}

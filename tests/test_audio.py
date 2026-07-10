@@ -72,6 +72,7 @@ class TestVolumeControl:
         mock_run.assert_called_with(
             ["pactl", "set-sink-volume", "test_sink", "150%"],
             capture_output=True,
+            timeout=10,
         )
 
     @patch("src.audio.subprocess.run")
@@ -81,6 +82,7 @@ class TestVolumeControl:
         mock_run.assert_called_with(
             ["pactl", "set-sink-volume", "test_sink", "200%"],
             capture_output=True,
+            timeout=10,
         )
 
     @patch("src.audio.subprocess.run")
@@ -90,6 +92,7 @@ class TestVolumeControl:
         mock_run.assert_called_with(
             ["pactl", "set-sink-volume", "test_sink", "0%"],
             capture_output=True,
+            timeout=10,
         )
 
 
@@ -259,16 +262,19 @@ class TestPlayerLifecycle:
         proc.terminate.assert_called_once()
         proc.wait.assert_called_once_with(timeout=5)
 
-    @patch("src.audio.subprocess.run")
     @patch("src.audio._audtool_call")
-    def test_kill_player(self, mock_tool, mock_run):
+    def test_kill_player(self, mock_tool, monkeypatch):
         mock_tool.return_value = True
-        mock_run.return_value = MagicMock(returncode=0)
-        from src.audio import kill_player
+        from src import audio
 
-        kill_player()
+        process = MagicMock()
+        process.poll.return_value = None
+        monkeypatch.setattr(audio, "_audacious_process", process)
+
+        audio.kill_player()
         mock_tool.assert_any_call("playback-stop")
-        mock_run.assert_called_once()
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=5)
 
     @patch("src.audio._audtool_call")
     def test_stop_playback(self, mock_tool):

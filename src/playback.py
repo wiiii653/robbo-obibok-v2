@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,7 @@ class PlaybackEngine:
         state.current_collection_id = ""
         state.is_playing = False
         state.voice_channel_id = None
+        state.queue_owner_user_id = 0
         state.search_results = []
         state.search_collection_id = ""
 
@@ -49,16 +51,17 @@ class PlaybackEngine:
     ) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
-        paths = load_raw_paths(state.collection_mode, self.root_dir)
+        paths = await asyncio.to_thread(load_raw_paths, state.collection_mode, self.root_dir)
         if not paths:
             return None
         state.tracks = paths
         self._reset_runtime_state(state)
-        blacklist_tracks = self.blacklist.get_tracks(user_id)
+        state.queue_owner_user_id = user_id
+        blacklist_tracks = await asyncio.to_thread(self.blacklist.get_tracks, user_id)
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
         if state.guild_id:
-            saved = load_queue(state.guild_id, self.root_dir)
+            saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
             if can_restore_queue(saved, filtered, state.collection_mode):
                 restore_queue(saved, state)
                 state.is_looping = self.default_loop  # <-- config overrides saved value
@@ -75,7 +78,7 @@ class PlaybackEngine:
         track = current_track(state)
         if track:
             if state.guild_id:
-                save_queue(state, self.root_dir)
+                await asyncio.to_thread(save_queue, state, self.root_dir)
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
@@ -92,8 +95,8 @@ class PlaybackEngine:
                     state.current_collection_id = ""
                     return None
                 continue
-            self.audio.set_volume_for_playback(str(playback_path))
-            success = self.audio.play(str(playback_path))
+            await asyncio.to_thread(self.audio.set_volume_for_playback, str(playback_path))
+            success = await asyncio.to_thread(self.audio.play, str(playback_path))
             if success:
                 state.current_track = track
                 state.current_collection_id = self._collection_for_position(state)
@@ -102,7 +105,7 @@ class PlaybackEngine:
                 state.history.append(track)
                 if len(state.history) > 20:
                     state.history = state.history[-20:]
-                save_queue(state, self.root_dir)
+                await asyncio.to_thread(save_queue, state, self.root_dir)
                 return track
             # Play failed — skip to next track instead of stopping the radio
             logger.warning("play_track: failed to play %s, skipping to next", track)
@@ -124,9 +127,9 @@ class PlaybackEngine:
         return await self.play_track(state)
 
     async def stop(self, state: PlaybackState) -> None:
-        self.audio.stop()
+        await asyncio.to_thread(self.audio.stop)
         self._reset_runtime_state(state)
-        save_queue(state, self.root_dir)
+        await asyncio.to_thread(save_queue, state, self.root_dir)
 
     async def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
         track = jump_to(state, index)
@@ -140,9 +143,9 @@ class PlaybackEngine:
 
     async def clear(self, state: PlaybackState) -> None:
         clear_queue(state)
-        self.audio.stop()
+        await asyncio.to_thread(self.audio.stop)
         self._reset_runtime_state(state)
-        save_queue(state, self.root_dir)
+        await asyncio.to_thread(save_queue, state, self.root_dir)
 
     def search(self, query: str, state: PlaybackState) -> list[str]:
         query_lower = query.lower()
@@ -247,5 +250,4 @@ class PlaybackEngine:
         if not col:
             return None
         return Path(self.root_dir) / self.archive_root / col.archive_path / track
-
 
