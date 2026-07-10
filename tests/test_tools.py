@@ -18,10 +18,9 @@ async def test_health_command_sends_runtime_snapshot():
         "playing_guilds": 1,
         "active_streams": 1,
         "monitor_tasks": 1,
-        "predownload_tasks": 0,
         "lease_owner": 123,
         "uptime_seconds": 12.3,
-        "metrics": {"playback_failures": 0, "predownload_failures": 0},
+        "metrics": {"playback_failures": 0},
     }
     ctx = MagicMock()
     ctx.send = AsyncMock()

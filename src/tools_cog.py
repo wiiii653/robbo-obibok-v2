@@ -43,15 +43,12 @@ class ToolsCog(commands.Cog):
         embed.add_field(name="Active Streams", value=str(snapshot["active_streams"]), inline=True)
         embed.add_field(name="Monitor Tasks", value=str(snapshot["monitor_tasks"]), inline=True)
         embed.add_field(
-            name="Predownload Tasks", value=str(snapshot["predownload_tasks"]), inline=True
-        )
-        embed.add_field(
             name="Lease Owner", value=str(snapshot["lease_owner"] or "none"), inline=True
         )
         metrics = snapshot["metrics"]
         embed.add_field(
             name="Failures",
-            value=f"playback={metrics['playback_failures']}, predownload={metrics['predownload_failures']}",
+            value=f"playback={metrics['playback_failures']}",
             inline=False,
         )
         await ctx.send(embed=embed)
@@ -108,7 +105,6 @@ class ToolsCog(commands.Cog):
                 "`!play` / `!pl` — Start shuffled radio\n"
                 "`!play <query>` — Search and play\n"
                 "`!play <number>` — Play from search results\n"
-                "`!play <url>` — Play remote track or YouTube link\n"
                 "`!stop` / `!st` — Stop and disconnect\n"
                 "`!skip` / `!next` / `!nt` — Skip to next\n"
                 "`!jump <n>` — Jump to track N\n"

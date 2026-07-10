@@ -89,18 +89,6 @@ class TestLoadConfig:
         with pytest.raises(ValueError, match="format_volumes"):
             load_config(config_path)
 
-    def test_remote_allowlist_is_loaded(self, tmp_path):
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text("remote:\n  allowed_domains: [example.com, YouTube.com]\n")
-        config = load_config(config_path)
-        assert config.remote.allowed_domains == ("example.com", "youtube.com")
-
-    def test_remote_allowlist_rejects_invalid_hostnames(self, tmp_path):
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text("remote:\n  allowed_domains: ['not a host']\n")
-        with pytest.raises(ValueError, match="allowed_domains"):
-            load_config(config_path)
-
     def test_allows_sparse_config(self, tmp_path):
         config_path = tmp_path / "config.yaml"
         config_path.write_text("command_prefix: '?'\n")
