@@ -17,6 +17,7 @@ class MonitorAudioSource(discord.AudioSource):
     FRAME_SIZE = 3840
     MAX_RESTARTS = 5
     RESTART_COOLDOWN = 1.0
+    STABLE_FRAMES = 25
 
     def __init__(
         self,
@@ -28,6 +29,7 @@ class MonitorAudioSource(discord.AudioSource):
         self.process = self._start_ffmpeg()
         self._restart_count = 0
         self._last_restart_ts = 0.0
+        self._frames_since_restart = self.STABLE_FRAMES
 
     def _start_ffmpeg(self) -> subprocess.Popen:
         return subprocess.Popen(
@@ -54,7 +56,9 @@ class MonitorAudioSource(discord.AudioSource):
 
     def _restart_ffmpeg(self) -> None:
         self.cleanup()
+        self.buffer = b""
         self.process = self._start_ffmpeg()
+        self._frames_since_restart = 0
 
     def read(self) -> bytes:
         while len(self.buffer) < self.FRAME_SIZE:
@@ -75,11 +79,17 @@ class MonitorAudioSource(discord.AudioSource):
             assert self.process.stdout is not None
             chunk = self.process.stdout.read(4096)
             if not chunk:
-                return b""
+                # Let the next iteration handle a process which exited between
+                # poll() and read(), without signalling EOF to Discord yet.
+                time.sleep(0.01)
+                continue
             self.buffer += chunk
-            self._restart_count = 0
         frame = self.buffer[: self.FRAME_SIZE]
         self.buffer = self.buffer[self.FRAME_SIZE :]
+        if self._frames_since_restart < self.STABLE_FRAMES:
+            self._frames_since_restart += 1
+            if self._frames_since_restart == self.STABLE_FRAMES:
+                self._restart_count = 0
         return frame
 
     def cleanup(self) -> None:
