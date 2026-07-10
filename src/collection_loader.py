@@ -123,25 +123,11 @@ def _parse_title(filepath: str, *, offset: int, length: int) -> dict[str, str]:
 
 
 def resolve_collection_for_filepath(filepath: str) -> str | None:
-    """Determine which collection a filepath belongs to (based on extension/URL patterns).
+    """Determine which collection a filepath belongs to (based on extension patterns).
 
-    Like v1's favplay logic: check extension and URL patterns to resolve the collection
+    Like v1's favplay logic: check extension to resolve the collection
     dynamically instead of relying on saved state.
     """
-    from .remote import is_remote_track
-
-    if is_remote_track(filepath):
-        low = filepath.lower()
-        # ModArchive URLs
-        if "modarchive" in low or "moduleid=" in low:
-            return "modarchive"
-        # HVSC URLs
-        if "hvsc" in low or "c64" in low or filepath.endswith(".sid"):
-            return "hvsc"
-        # ASMA URLs
-        if "asma" in low or "atari" in low or filepath.endswith(".sap"):
-            return "asma"
-        return None
 
     # Local track — check extension against each collection
     ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""

@@ -126,5 +126,3 @@ class PlaybackState:
     played_count: int = 0
     search_results: list[str] = field(default_factory=list)
     search_collection_id: str = ""
-    predownload_path: str = ""
-    predownload_url: str = ""

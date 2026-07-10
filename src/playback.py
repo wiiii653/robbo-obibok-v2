@@ -22,16 +22,7 @@ from .queue import (
     restore_queue,
     save_queue,
 )
-from .remote import (
-    download_modarchive_module,
-    download_remote_track,
-    download_youtube_track,
-    is_allowed_remote_url,
-    is_remote_track,
-    is_youtube_url,
-    remote_cache_path,
-    uses_module_cache,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +34,10 @@ class PlaybackEngine:
     blacklist: Blacklist
     root_dir: str
     archive_root: str = "archiwum"
-    allowed_remote_domains: tuple[str, ...] = ()
     shuffle_queue: bool = True
     default_loop: bool = False
 
-    def _clear_remote_state(self, state: PlaybackState) -> None:
-        state.predownload_path = ""
-        state.predownload_url = ""
-
     def _reset_runtime_state(self, state: PlaybackState) -> None:
-        self._clear_remote_state(state)
         state.current_track = ""
         state.current_collection_id = ""
         state.is_playing = False
@@ -119,7 +104,6 @@ class PlaybackEngine:
                 if len(state.history) > 20:
                     state.history = state.history[-20:]
                 save_queue(state, self.root_dir)
-                self._clear_remote_state(state)
                 return track
             # Play failed — skip to next track instead of stopping the radio
             logger.warning("play_track: failed to play %s, skipping to next", track)
@@ -195,34 +179,6 @@ class PlaybackEngine:
                     break
         return results
 
-    async def predownload_next(self, state: PlaybackState) -> str | None:
-        if not state.queue:
-            return None
-        next_index = state.position + 1
-        if next_index >= len(state.queue):
-            if state.is_looping:
-                next_index = 0
-            else:
-                return None
-        next_track = state.queue[next_index]
-        if not is_remote_track(next_track):
-            return None
-        if (
-            state.predownload_url == next_track
-            and state.predownload_path
-            and Path(state.predownload_path).exists()
-        ):
-            return state.predownload_path
-        try:
-            output_path = await self._download_remote_track(state, next_track)
-        except Exception as exc:
-            logger.warning("Remote predownload failed for %s: %s", next_track, exc)
-            return None
-        if output_path:
-            state.predownload_url = next_track
-            state.predownload_path = output_path
-        return output_path
-
     def describe_search_result(
         self, filepath: str, collection_id: str, index: int | None = None
     ) -> str:
@@ -250,18 +206,6 @@ class PlaybackEngine:
         return prefix + label
 
     def get_track_metadata(self, filepath: str, collection_id: str) -> dict[str, str]:
-        if is_remote_track(filepath):
-            from urllib.parse import unquote, urlparse
-
-            parsed = urlparse(filepath)
-            # For ModArchive URLs, use module ID as label
-            if "moduleid=" in filepath:
-                mod_id = filepath.split("moduleid=", 1)[-1].split("&", 1)[0]
-                return {"NAME": f"ModArchive #{mod_id}", "AUTHOR": ""}
-            # For other remote tracks, extract a readable name from the URL path
-            stem = Path(unquote(parsed.path)).stem or "remote"
-            clean = stem.replace("_", " ").replace("-", " ").strip()
-            return {"NAME": clean.title() if clean else "Remote Track", "AUTHOR": ""}
         col = get_collection(collection_id)
         if not col:
             return {}
@@ -300,49 +244,9 @@ class PlaybackEngine:
         return info
 
     async def _resolve_track_path(self, state: PlaybackState, track: str) -> Path | None:
-        if is_remote_track(track):
-            if state.predownload_url == track and state.predownload_path:
-                cached_path = Path(state.predownload_path)
-                if cached_path.exists():
-                    return cached_path
-            try:
-                output_path = await self._download_remote_track(state, track)
-            except Exception as exc:
-                logger.warning("Remote download failed for %s: %s", track, exc)
-                return None
-            if output_path:
-                state.predownload_url = track
-                state.predownload_path = output_path
-                return Path(output_path)
-            return None
-
         col = get_collection(self._collection_for_position(state))
         if not col:
             return None
         return Path(self.root_dir) / self.archive_root / col.archive_path / track
 
-    async def _download_remote_track(self, state: PlaybackState, track: str) -> str | None:
-        if not is_allowed_remote_url(track, self.allowed_remote_domains):
-            logger.warning("Remote URL rejected by policy: %s", track)
-            return None
-        if is_youtube_url(track):
-            return await asyncio.to_thread(
-                download_youtube_track,
-                track,
-                self.root_dir,
-                allowed_domains=self.allowed_remote_domains,
-            )
-        if uses_module_cache(track):
-            return await asyncio.to_thread(
-                download_modarchive_module,
-                track,
-                root_dir=self.root_dir,
-                allowed_domains=self.allowed_remote_domains,
-            )
-        output_path = remote_cache_path(self.root_dir, track)
-        return await asyncio.to_thread(
-            download_remote_track,
-            track,
-            output_path,
-            allowed_domains=self.allowed_remote_domains,
-        )
+
