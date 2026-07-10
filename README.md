@@ -196,6 +196,10 @@ sudo journalctl -u robbo-obibok -f
 The installer accepts optional arguments for a different checkout and service account:
 `sudo deploy/install-systemd.sh /absolute/project/path app-user app-group`.
 
+Tagged releases are built by GitHub Actions and published as workflow artifacts. To roll back,
+check out the previous tag in a separate project directory, restore the existing `.env`, run
+`make install`, and rerun `sudo deploy/install-systemd.sh /absolute/project/path app-user app-group`.
+
 ## Building Local Indexes
 
 After cloning, build the local track indexes for the local archive collections:

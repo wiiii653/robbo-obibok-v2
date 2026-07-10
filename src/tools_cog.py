@@ -48,6 +48,12 @@ class ToolsCog(commands.Cog):
         embed.add_field(
             name="Lease Owner", value=str(snapshot["lease_owner"] or "none"), inline=True
         )
+        metrics = snapshot["metrics"]
+        embed.add_field(
+            name="Failures",
+            value=f"playback={metrics['playback_failures']}, predownload={metrics['predownload_failures']}",
+            inline=False,
+        )
         await ctx.send(embed=embed)
 
     @commands.command()

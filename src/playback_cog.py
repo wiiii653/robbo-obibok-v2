@@ -129,6 +129,8 @@ class PlaybackCog(commands.Cog):
     async def _finish_playback(
         self, ctx: commands.Context, state: PlaybackState, message: str
     ) -> None:
+        if message.lower().startswith(("failed", "all tracks stuck")):
+            self.bot.increment_metric("playback_failures")
         guild_id = ctx.guild.id if ctx.guild else None
         try:
             await self.bot.engine.stop(state)
