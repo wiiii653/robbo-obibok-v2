@@ -51,6 +51,7 @@ class ObibokBot(commands.Bot):
         self._active_streams: dict[int, MonitorAudioSource] = {}
         self._background_tasks: list[asyncio.Task] = []
         self._playback_sessions: dict[int, int] = {}
+        self._stream_restart_attempts: dict[int, int] = {}
         self._np_messages_max = 200
         self._started_at = time.monotonic()
         self._metrics: dict[str, int] = {
@@ -68,7 +69,9 @@ class ObibokBot(commands.Bot):
             del self._np_messages[oldest]
         self._np_messages[msg_id] = data
 
-    def _start_stream(self, guild_id: int, voice_client: discord.VoiceClient) -> None:
+    def _start_stream(
+        self, guild_id: int, voice_client: discord.VoiceClient, *, reset_attempts: bool = True
+    ) -> None:
         """Start or restart the MonitorAudioSource on the given voice client."""
         if not voice_client or not voice_client.is_connected():
             logger.warning("_start_stream: voice client not connected for guild %s", guild_id)
@@ -82,6 +85,8 @@ class ObibokBot(commands.Bot):
             source, after=lambda e: self._on_stream_end(guild_id, e, source.source_id)
         )
         self._active_streams[guild_id] = source
+        if reset_attempts:
+            self._stream_restart_attempts[guild_id] = 0
 
     def _stop_stream(self, guild_id: int) -> None:
         source = self._active_streams.pop(guild_id, None)
@@ -93,17 +98,39 @@ class ObibokBot(commands.Bot):
             self.increment_metric("stream_restarts")
             logger.warning("Stream ended with error for guild %s: %s", guild_id, error)
         current = self._active_streams.get(guild_id)
-        if current is not None and getattr(current, "source_id", None) == source_id:
+        is_current = current is not None and getattr(current, "source_id", None) == source_id
+        if is_current:
             self._active_streams.pop(guild_id, None)
-        # If stream died but voice is still connected, restart the stream
-        if error:
-            vc = self.get_guild(guild_id).voice_client if self.get_guild(guild_id) else None
-            if vc and vc.is_connected():
-                logger.info(
-                    "Stream died (error) but voice connected, restarting stream for guild %s",
-                    guild_id,
-                )
-                self._start_stream(guild_id, vc)
+        if error and is_current:
+            self.loop.call_soon_threadsafe(
+                lambda: asyncio.create_task(self._restart_stream_after_error(guild_id))
+            )
+
+    async def _restart_stream_after_error(self, guild_id: int) -> None:
+        attempts = self._stream_restart_attempts.get(guild_id, 0) + 1
+        self._stream_restart_attempts[guild_id] = attempts
+        if attempts > 5:
+            logger.error("Stream restart limit reached for guild %s; ending session", guild_id)
+            state = self.get_state(guild_id)
+            await self.engine.stop(state)
+            await self._cancel_monitor(guild_id)
+            self.release_lease(guild_id)
+            guild = self.get_guild(guild_id)
+            if guild and guild.voice_client:
+                await guild.voice_client.disconnect()
+            return
+        delay = min(2 ** (attempts - 1), 16)
+        logger.warning(
+            "Restarting stream for guild %s in %ss (attempt %s/5)",
+            guild_id,
+            delay,
+            attempts,
+        )
+        await asyncio.sleep(delay)
+        guild = self.get_guild(guild_id)
+        vc = guild.voice_client if guild else None
+        if vc and vc.is_connected() and self.get_state(guild_id).is_playing:
+            self._start_stream(guild_id, vc, reset_attempts=False)
 
     def try_acquire_lease(self, guild: discord.Guild) -> bool:
         return self.playback_lease.acquire(guild.id, guild.name)
@@ -112,10 +139,16 @@ class ObibokBot(commands.Bot):
         if guild_id is None or self.playback_lease.owner_guild_id == guild_id:
             self.playback_lease.release()
 
-    def _cancel_monitor(self, guild_id: int) -> None:
+    async def _cancel_monitor(self, guild_id: int) -> None:
         task = self._monitor_tasks.pop(guild_id, None)
         if task and not task.done() and task is not asyncio.current_task():
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.warning("Monitor task failed during cancellation: %s", exc)
 
     def health_snapshot(self) -> dict[str, object]:
         """Return a non-blocking snapshot suitable for diagnostics and support."""

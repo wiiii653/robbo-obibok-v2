@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .audio import AudioController
@@ -36,6 +36,10 @@ class PlaybackEngine:
     archive_root: str = "archiwum"
     shuffle_queue: bool = True
     default_loop: bool = False
+    _guild_locks: dict[int, asyncio.Lock] = field(default_factory=dict, init=False, repr=False)
+
+    def _lock_for(self, state: PlaybackState) -> asyncio.Lock:
+        return self._guild_locks.setdefault(state.guild_id, asyncio.Lock())
 
     def _reset_runtime_state(self, state: PlaybackState) -> None:
         state.current_track = ""
@@ -82,6 +86,10 @@ class PlaybackEngine:
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
+        async with self._lock_for(state):
+            return await self._play_track_unlocked(state)
+
+    async def _play_track_unlocked(self, state: PlaybackState) -> str | None:
         for _attempt in range(5):  # skip up to 5 bad tracks
             track = current_track(state)
             if not track:
@@ -121,31 +129,35 @@ class PlaybackEngine:
         return None
 
     async def skip_track(self, state: PlaybackState) -> str | None:
-        track = next_track(state)
-        if not track:
-            return None
-        return await self.play_track(state)
+        async with self._lock_for(state):
+            track = next_track(state)
+            if not track:
+                return None
+            return await self._play_track_unlocked(state)
 
     async def stop(self, state: PlaybackState) -> None:
-        await asyncio.to_thread(self.audio.stop)
-        self._reset_runtime_state(state)
-        await asyncio.to_thread(save_queue, state, self.root_dir)
+        async with self._lock_for(state):
+            await asyncio.to_thread(self.audio.stop)
+            self._reset_runtime_state(state)
+            await asyncio.to_thread(save_queue, state, self.root_dir)
 
     async def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
-        track = jump_to(state, index)
-        if not track:
-            return None
-        return await self.play_track(state)
+        async with self._lock_for(state):
+            track = jump_to(state, index)
+            if not track:
+                return None
+            return await self._play_track_unlocked(state)
 
     def toggle_loop(self, state: PlaybackState) -> bool:
         state.is_looping = not state.is_looping
         return state.is_looping
 
     async def clear(self, state: PlaybackState) -> None:
-        clear_queue(state)
-        await asyncio.to_thread(self.audio.stop)
-        self._reset_runtime_state(state)
-        await asyncio.to_thread(save_queue, state, self.root_dir)
+        async with self._lock_for(state):
+            clear_queue(state)
+            await asyncio.to_thread(self.audio.stop)
+            self._reset_runtime_state(state)
+            await asyncio.to_thread(save_queue, state, self.root_dir)
 
     def search(self, query: str, state: PlaybackState) -> list[str]:
         query_lower = query.lower()
@@ -250,4 +262,3 @@ class PlaybackEngine:
         if not col:
             return None
         return Path(self.root_dir) / self.archive_root / col.archive_path / track
-

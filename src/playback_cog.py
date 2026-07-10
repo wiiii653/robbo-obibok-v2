@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import random
 import time
@@ -13,6 +14,7 @@ from .collection_loader import get_collection, load_raw_paths
 from .discord_compat import commands, discord
 from .embeds import now_playing_embed, queue_embed
 from .models import PlaybackState
+from .monitor import TrackMonitor
 
 if TYPE_CHECKING:
     from .bot import ObibokBot
@@ -93,9 +95,9 @@ class PlaybackCog(commands.Cog):
                                 await vc.disconnect()
                             new_vc = await channel.connect()
                             self.bot._start_stream(guild_id, new_vc)
-                            self.bot._cancel_monitor(guild_id)
+                            await self.bot._cancel_monitor(guild_id)
                             ctx = self._get_fallback_ctx(guild.me, new_vc)
-                            self._install_monitor(ctx, state)
+                            await self._replace_monitor(ctx, state)
                             logger.info("Voice reconnected for guild %s after RESUME", guild_id)
                         except Exception as exc:
                             logger.warning("Voice reconnect failed for guild %s: %s", guild_id, exc)
@@ -138,7 +140,7 @@ class PlaybackCog(commands.Cog):
         if guild_id is not None:
             self.bot._stop_stream(guild_id)
         if guild_id is not None:
-            self.bot._cancel_monitor(guild_id)
+            await self.bot._cancel_monitor(guild_id)
         self.bot.release_lease(guild_id)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
@@ -181,8 +183,8 @@ class PlaybackCog(commands.Cog):
                     vc = member.guild.voice_client
                     if vc and vc.is_connected():
                         self.bot._start_stream(guild_id, vc)
-                        self.bot._cancel_monitor(guild_id)
-                        self._install_monitor(self._get_fallback_ctx(member, vc), state)
+                        await self.bot._cancel_monitor(guild_id)
+                        await self._replace_monitor(self._get_fallback_ctx(member, vc), state)
             return
 
         # Handle bot's own voice reconnect — restart stream if we were playing
@@ -222,7 +224,7 @@ class PlaybackCog(commands.Cog):
         except Exception as exc:
             await self.bot.engine.stop(state)
             self.bot._stop_stream(member.guild.id)
-            self.bot._cancel_monitor(member.guild.id)
+            await self.bot._cancel_monitor(member.guild.id)
             self.bot.release_lease(member.guild.id)
             logger.warning("Auto-start failed: %s", exc)
 
@@ -261,14 +263,14 @@ class PlaybackCog(commands.Cog):
             if not state.search_results or idx < 0 or idx >= len(state.search_results):
                 return await ctx.send("Invalid number. Use !search first.")
             path = state.search_results[idx]
-            if not self.bot.try_acquire_lease(ctx.guild):
-                owner = self.bot.playback_lease.owner_guild_name or "another server"
-                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
             from .audio import _is_sap_supported
 
             supported, reason = _is_sap_supported(path)
             if not supported:
                 return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
+            if not self.bot.try_acquire_lease(ctx.guild):
+                owner = self.bot.playback_lease.owner_guild_name or "another server"
+                return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
             self._set_queue(state, [(path, state.search_collection_id or state.collection_mode)])
             await self._connect_and_play(
                 ctx,
@@ -332,7 +334,7 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.stop(state)
         self.bot._stop_stream(ctx.guild.id)
-        self.bot._cancel_monitor(ctx.guild.id)
+        await self.bot._cancel_monitor(ctx.guild.id)
         self.bot.release_lease(ctx.guild.id)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
@@ -345,12 +347,12 @@ class PlaybackCog(commands.Cog):
         if not await self._can_control_audio(ctx, require_owner=True):
             return
         state = self.bot.get_state(ctx.guild.id)
-        self.bot._cancel_monitor(ctx.guild.id)
+        await self.bot._cancel_monitor(ctx.guild.id)
         track = await self.bot.engine.skip_track(state)
         if not track:
             return await self._finish_playback(ctx, state, "Playlist ended.")
         await self._after_track_started(ctx, state)
-        self._install_monitor(ctx, state)
+        await self._replace_monitor(ctx, state)
 
     @commands.command()
     async def np(self, ctx: commands.Context) -> None:
@@ -392,12 +394,12 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         if index < 1 or index > len(state.queue):
             return await ctx.send("Invalid position.")
-        self.bot._cancel_monitor(ctx.guild.id)
+        await self.bot._cancel_monitor(ctx.guild.id)
         track = await self.bot.engine.jump_to_track(state, index - 1)
         if not track:
             return await self._finish_playback(ctx, state, "Failed to play track.")
         await self._after_track_started(ctx, state)
-        self._install_monitor(ctx, state)
+        await self._replace_monitor(ctx, state)
 
     @commands.command()
     async def loop(self, ctx: commands.Context) -> None:
@@ -426,7 +428,7 @@ class PlaybackCog(commands.Cog):
         state = self.bot.get_state(ctx.guild.id)
         await self.bot.engine.clear(state)
         self.bot._stop_stream(ctx.guild.id)
-        self.bot._cancel_monitor(ctx.guild.id)
+        await self.bot._cancel_monitor(ctx.guild.id)
         self.bot.release_lease(ctx.guild.id)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
@@ -470,7 +472,7 @@ class PlaybackCog(commands.Cog):
             self.bot._playback_sessions.get(ctx.guild.id, 0) + 1
         )
 
-        self.bot._cancel_monitor(ctx.guild.id)
+        await self.bot._cancel_monitor(ctx.guild.id)
 
         self.bot._start_stream(ctx.guild.id, ctx.voice_client)
 
@@ -479,7 +481,7 @@ class PlaybackCog(commands.Cog):
             return await self._finish_playback(ctx, state, "Failed to play track.")
 
         await self._after_track_started(ctx, state)
-        self._install_monitor(ctx, state)
+        await self._replace_monitor(ctx, state)
 
     async def _after_track_started(self, ctx: commands.Context, state: PlaybackState) -> None:
         await self._send_now_playing(ctx, state)
@@ -496,10 +498,19 @@ class PlaybackCog(commands.Cog):
         members = getattr(voice_client.channel, "members", [])
         return sum(1 for member in members if not getattr(member, "bot", False))
 
+    async def _replace_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
+        if not ctx.guild:
+            return
+        await self.bot._cancel_monitor(ctx.guild.id)
+        self._install_monitor(ctx, state)
+
     def _install_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
         if not ctx.guild:
             return
         guild_id = ctx.guild.id
+        # Copy configuration (and any instance-level instrumentation) while
+        # keeping all mutable detection fields private to this session.
+        monitor: TrackMonitor = copy.copy(self.bot.monitor)
 
         _stuck_count: int = 0
 
@@ -568,7 +579,7 @@ class PlaybackCog(commands.Cog):
 
         async def run_monitor() -> None:
             try:
-                await self.bot.monitor.monitor_loop(
+                await monitor.monitor_loop(
                     state, on_track_end, on_empty, get_voice_members
                 )
             except asyncio.CancelledError:
