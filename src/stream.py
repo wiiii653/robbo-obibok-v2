@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 import time
 
 from .discord_compat import discord
@@ -26,6 +27,8 @@ class MonitorAudioSource(discord.AudioSource):
     ) -> None:
         self.buffer = b""
         self.sink_name = sink_name
+        self._lock = threading.RLock()
+        self._closed = False
         self.process = self._start_ffmpeg()
         self._restart_count = 0
         self._last_restart_ts = 0.0
@@ -55,14 +58,40 @@ class MonitorAudioSource(discord.AudioSource):
         )
 
     def _restart_ffmpeg(self) -> None:
-        self.cleanup()
+        with self._lock:
+            if self._closed:
+                return
+            process = self.process
+            self.process = None
+            if process is not None:
+                stdout = process.stdout
+                if stdout is not None:
+                    try:
+                        stdout.close()
+                    except (AttributeError, OSError):
+                        pass
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
         self.buffer = b""
-        self.process = self._start_ffmpeg()
+        with self._lock:
+            if self._closed:
+                return
+            self.process = self._start_ffmpeg()
         self._frames_since_restart = 0
 
     def read(self) -> bytes:
         while len(self.buffer) < self.FRAME_SIZE:
-            if self.process.poll() is not None:
+            with self._lock:
+                if self._closed:
+                    return b""
+                process = self.process
+            if process is None:
+                return b""
+            if process.poll() is not None:
                 if self._restart_count >= self.MAX_RESTARTS:
                     logger.warning(
                         "MonitorAudioSource: max restarts (%d) reached, ending stream",
@@ -76,8 +105,19 @@ class MonitorAudioSource(discord.AudioSource):
                 self._restart_count += 1
                 time.sleep(0.1)
                 self._restart_ffmpeg()
-            assert self.process.stdout is not None
-            chunk = self.process.stdout.read(4096)
+                continue
+            with self._lock:
+                if self._closed or self.process is not process:
+                    return b""
+                stdout = process.stdout
+            if stdout is None:
+                return b""
+            try:
+                chunk = stdout.read(4096)
+            except (OSError, ValueError):
+                # cleanup() may close stdout while the audio thread is blocked
+                # in read().  Treat that as end-of-stream.
+                return b""
             if not chunk:
                 # Let the next iteration handle a process which exited between
                 # poll() and read(), without signalling EOF to Discord yet.
@@ -93,9 +133,22 @@ class MonitorAudioSource(discord.AudioSource):
         return frame
 
     def cleanup(self) -> None:
-        if self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+        with self._lock:
+            self._closed = True
+            process = self.process
+            self.process = None
+            if process is None:
+                return
+            # Closing the pipe first unblocks an audio thread waiting in read().
+            stdout = process.stdout
+            if stdout is not None:
+                try:
+                    stdout.close()
+                except (AttributeError, OSError):
+                    pass
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
