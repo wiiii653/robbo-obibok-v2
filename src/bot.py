@@ -289,6 +289,9 @@ class ObibokBot(commands.Bot):
                             gid,
                         )
                         state.is_playing = False
+                        self.release_lease(gid)
+                        await self.engine.stop(state)
+                        await self._cancel_monitor(gid)
                 else:
                     # No voice channel remembered — nothing to reconnect to
                     pass
