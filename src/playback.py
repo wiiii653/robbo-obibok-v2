@@ -173,6 +173,14 @@ class PlaybackEngine:
             self._reset_runtime_state(state)
             await asyncio.to_thread(save_queue, state, self.root_dir)
 
+    def _build_track_path(self, col: Collection, track: str) -> Path:
+        """Build the full filesystem path for a track, handling archive_path prefix dedup."""
+        archive_parts = col.archive_path.split("/")
+        if len(archive_parts) > 1 and track.replace("\\", "/").startswith(archive_parts[-1] + "/"):
+            base = "/".join(archive_parts[:-1])
+            return Path(self.root_dir) / self.archive_root / base / track
+        return Path(self.root_dir) / self.archive_root / col.archive_path / track
+
     def search(self, query: str, state: PlaybackState) -> list[str]:
         query_lower = query.lower()
         results: list[str] = []
@@ -197,7 +205,7 @@ class PlaybackEngine:
 
             if not col:
                 continue
-            full_path = Path(self.root_dir) / self.archive_root / col.archive_path / path
+            full_path = self._build_track_path(col, path)
             meta = extract_metadata(str(full_path), state.collection_mode)
             name = meta.get("NAME", meta.get("name", ""))
             author = meta.get("AUTHOR", meta.get("author", ""))
@@ -237,7 +245,7 @@ class PlaybackEngine:
         col = get_collection(collection_id)
         if not col:
             return {}
-        full_path = Path(self.root_dir) / self.archive_root / col.archive_path / filepath
+        full_path = self._build_track_path(col, filepath)
         return extract_metadata(str(full_path), collection_id)
 
     def _collection_for_position(self, state: PlaybackState) -> str:
@@ -275,4 +283,4 @@ class PlaybackEngine:
         col = get_collection(self._collection_for_position(state))
         if not col:
             return None
-        return Path(self.root_dir) / self.archive_root / col.archive_path / track
+        return self._build_track_path(col, track)
