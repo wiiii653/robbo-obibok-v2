@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -211,6 +212,11 @@ class TestTrackEndBehavior:
     async def test_skip_advances_position(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(queue=["a.sap", "b.sap", "c.sap"], position=0)
+        # Create test files so _resolve_track_path's exists() check passes
+        archive_dir = Path(str(tmp_path)) / "archiwum" / "asma"
+        archive_dir.mkdir(parents=True)
+        for fname in ("a.sap", "b.sap", "c.sap"):
+            (archive_dir / fname).write_text("SAP\n")
         await engine.skip_track(state)
         assert state.position == 1
 

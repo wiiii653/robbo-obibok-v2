@@ -90,13 +90,30 @@ class PlaybackEngine:
             return await self._play_track_unlocked(state)
 
     async def _play_track_unlocked(self, state: PlaybackState) -> str | None:
-        for _attempt in range(5):  # skip up to 5 bad tracks
+        consecutive_fails = 0
+        start_pos = state.position
+        while True:
             track = current_track(state)
             if not track:
                 return None
+            # Circuit-breaker: if we've looped back to the start position after
+            # advancing through the whole queue, every track is bad — give up.
+            if consecutive_fails > 0 and state.position == start_pos:
+                logger.error(
+                    "All %d tracks failed — giving up after %d consecutive failures",
+                    len(state.queue),
+                    consecutive_fails,
+                )
+                state.is_playing = False
+                state.current_track = ""
+                state.current_collection_id = ""
+                return None
+            consecutive_fails += 1
+
             playback_path = await self._resolve_track_path(state, track)
-            if playback_path is None:
+            if playback_path is None or not playback_path.exists():
                 logger.warning("play_track: track not resolved, skipping: %s", track)
+                state.skipped_tracks += 1
                 if next_track(state) is None:
                     state.is_playing = False
                     state.current_track = ""
@@ -110,6 +127,7 @@ class PlaybackEngine:
                 state.current_collection_id = self._collection_for_position(state)
                 state.is_playing = True
                 state.played_count += 1
+                state.skipped_tracks = 0  # reset on successful play
                 state.history.append(track)
                 if len(state.history) > 20:
                     state.history = state.history[-20:]
@@ -117,16 +135,12 @@ class PlaybackEngine:
                 return track
             # Play failed — skip to next track instead of stopping the radio
             logger.warning("play_track: failed to play %s, skipping to next", track)
+            state.skipped_tracks += 1
             if next_track(state) is None:
                 state.is_playing = False
                 state.current_track = ""
                 state.current_collection_id = ""
                 return None
-        logger.error("play_track: exhausted 5 skips, giving up")
-        state.is_playing = False
-        state.current_track = ""
-        state.current_collection_id = ""
-        return None
 
     async def skip_track(self, state: PlaybackState) -> str | None:
         async with self._lock_for(state):
