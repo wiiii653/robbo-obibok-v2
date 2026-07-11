@@ -11,15 +11,25 @@ def now_playing_embed(
     position: int,
     total: int,
     color: int = 0x00FF00,
+    skipped: int = 0,
 ) -> dict:
+    fields = [
+        {"name": "Collection", "value": collection_name, "inline": True},
+        {"name": "Position", "value": f"{position}/{total}", "inline": True},
+    ]
+    if skipped > 0:
+        fields.append(
+            {
+                "name": "⏭️ Skipped",
+                "value": f"{skipped} track{'s' if skipped > 1 else ''} were bad and skipped",
+                "inline": False,
+            }
+        )
     return {
         "title": f"{collection_icon} Now Playing",
         "description": f"**{title}**\nby {author}" if author else f"**{title}**",
         "color": color,
-        "fields": [
-            {"name": "Collection", "value": collection_name, "inline": True},
-            {"name": "Position", "value": f"{position}/{total}", "inline": True},
-        ],
+        "fields": fields,
     }
 
 

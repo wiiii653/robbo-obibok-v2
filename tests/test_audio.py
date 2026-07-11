@@ -141,7 +141,8 @@ class TestPlayFile:
     @patch("src.audio._audtool_call")
     @patch("src.audio._audacious_ready", True)
     def test_play_file_failure(self, mock_audtool, mock_alive):
-        mock_audtool.side_effect = [True, True, True] + [False] * 10 + [True]
+        # New retry logic makes more calls: clear+addurl+play + 5 retries with re-add
+        mock_audtool.side_effect = [True, True, True] + [False] * 50
         result = play_file("test.sap", "test_sink")
         assert result is False
 

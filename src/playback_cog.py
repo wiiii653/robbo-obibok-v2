@@ -621,7 +621,10 @@ class PlaybackCog(commands.Cog):
             position=state.position + 1,
             total=len(state.queue),
             color=col.color if col else 0x00FF00,
+            skipped=state.skipped_tracks,
         )
+        if state.skipped_tracks > 0:
+            state.skipped_tracks = 0
         msg = await ctx.send(embed=discord.Embed.from_dict(embed))
         if msg is None:
             return

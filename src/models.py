@@ -124,6 +124,7 @@ class PlaybackState:
     voice_channel_id: int | None = None
     history: list[str] = field(default_factory=list)
     played_count: int = 0
+    skipped_tracks: int = 0
     queue_owner_user_id: int = 0
     search_results: list[str] = field(default_factory=list)
     search_collection_id: str = ""

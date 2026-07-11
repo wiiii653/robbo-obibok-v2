@@ -315,15 +315,41 @@ def play_file(filepath: str, sink_name: str) -> bool:
     add_ok = _audtool_call("playlist-addurl", filepath)
     play_ok = _audtool_call("playback-play")
     logger.info("play_file: add=%s play=%s", add_ok, play_ok)
-    for attempt in range(3):
-        time.sleep(0.2)
+    for attempt in range(5):  # 5 retries with actual re-play
+        time.sleep(0.5)  # wait longer (0.5s instead of 0.2s)
         if _audtool_call("playback-playing"):
             _move_to_sink(sink_name)
             logger.info("play_file: playing after attempt %d", attempt + 1)
             return True
-        logger.warning("play_file: attempt %d failed, retrying", attempt + 1)
+        # On attempts 2+, re-clear and re-add — some formats need a fresh kick
+        # (GME/SID plugins may need more time or a re-init for certain files)
+        if attempt >= 1:
+            logger.warning("play_file: attempt %d not playing, re-adding...", attempt + 1)
+            _audtool_call("playlist-clear")
+            time.sleep(0.2)
+            _audtool_call("playlist-addurl", filepath)
+            _audtool_call("playback-play")
+        else:
+            # First failure: just re-kick playback without clearing
+            logger.warning("play_file: attempt %d failed, re-kicking playback", attempt + 1)
+            _audtool_call("playback-stop")
+            time.sleep(0.1)
+            _audtool_call("playback-play")
+    # One final sanity check: is the file actually loaded?
+    loaded_file = current_song_filename()
+    if loaded_file:
+        logger.warning(
+            "play_file: FAILED after 5 retries but file loaded (%s), trying play once more",
+            loaded_file,
+        )
+        _audtool_call("playback-play")
+        time.sleep(1.0)
+        if _audtool_call("playback-playing"):
+            _move_to_sink(sink_name)
+            logger.info("play_file: playing after final kick")
+            return True
     _audtool_call("playlist-clear")
-    logger.warning("play_file: FAILED after 3 attempts, filepath=%s — will retry later", filepath)
+    logger.warning("play_file: FAILED after 5 attempts, filepath=%s — will retry later", filepath)
 
     # If Audacious died, restart it and try one more time
     if not _is_audacious_alive():
@@ -334,12 +360,17 @@ def play_file(filepath: str, sink_name: str) -> bool:
         time.sleep(0.3)
         _audtool_call("playlist-addurl", filepath)
         _audtool_call("playback-play")
-        for attempt in range(3):
-            time.sleep(0.2)
+        for attempt in range(5):
+            time.sleep(0.5)
             if _audtool_call("playback-playing"):
                 _move_to_sink(sink_name)
                 logger.info("play_file: playing after restart (attempt %d)", attempt + 1)
                 return True
+            if attempt >= 1:
+                _audtool_call("playlist-clear")
+                time.sleep(0.2)
+                _audtool_call("playlist-addurl", filepath)
+                _audtool_call("playback-play")
             logger.warning("play_file: restart retry attempt %d failed", attempt + 1)
         _audtool_call("playlist-clear")
         logger.error("play_file: STILL FAILED after restart, filepath=%s", filepath)
