@@ -101,6 +101,37 @@ class PlaybackCog(commands.Cog):
                             logger.info("Voice reconnected for guild %s after RESUME", guild_id)
                         except Exception as exc:
                             logger.warning("Voice reconnect failed for guild %s: %s", guild_id, exc)
+        # Also recover orphaned playback — state.is_playing but no active stream
+        # (stream already ended before voice reconnected, so on_resumed found 0 above)
+        for guild_id, state in list(self.bot._states.items()):
+            if not state.is_playing:
+                continue
+            if guild_id in self.bot._active_streams:
+                continue
+            guild = self.bot.get_guild(guild_id)
+            if not guild:
+                continue
+            vc = guild.voice_client
+            if vc and vc.is_connected():
+                logger.info("Restarting orphaned stream for guild %s after RESUME", guild_id)
+                self.bot._start_stream(guild_id, vc)
+                await self.bot._cancel_monitor(guild_id)
+                ctx = self._get_fallback_ctx(guild.me, vc)
+                await self._replace_monitor(ctx, state)
+            elif state.voice_channel_id:
+                channel = guild.get_channel(state.voice_channel_id)
+                if channel:
+                    try:
+                        if vc:
+                            await vc.disconnect()
+                        new_vc = await channel.connect()
+                        self.bot._start_stream(guild_id, new_vc)
+                        await self.bot._cancel_monitor(guild_id)
+                        ctx = self._get_fallback_ctx(guild.me, new_vc)
+                        await self._replace_monitor(ctx, state)
+                        logger.info("Voice reconnected for orphaned guild %s after RESUME", guild_id)
+                    except Exception as exc:
+                        logger.warning("Orphaned voice reconnect failed for guild %s: %s", guild_id, exc)
 
     async def _can_control_audio(
         self, ctx: commands.Context, *, require_owner: bool = False
