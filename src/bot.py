@@ -81,6 +81,7 @@ class ObibokBot(commands.Bot):
             old.cleanup()
         source = MonitorAudioSource(sink_name=self.sink_name)
         source.source_id = id(source)
+        voice_client.stop()
         voice_client.play(
             source, after=lambda e: self._on_stream_end(guild_id, e, source.source_id)
         )
@@ -233,7 +234,11 @@ class ObibokBot(commands.Bot):
                         "Health watchdog: voice connected but not playing for guild %s, restarting stream",
                         gid,
                     )
-                    self._start_stream(gid, vc)
+                    playback_cog = self.get_cog("PlaybackCog")
+                    if playback_cog:
+                        await playback_cog._recover_voice(gid, vc)
+                    else:
+                        self._start_stream(gid, vc)
             # Recover orphaned playback — state says playing but no active stream
             # (happens when voice disconnects and stream ends without RECONNECT)
             now = time.monotonic()
@@ -258,7 +263,11 @@ class ObibokBot(commands.Bot):
                             "Health watchdog: voice connected but stream lost for guild %s, restarting",
                             gid,
                         )
-                        self._start_stream(gid, vc)
+                        playback_cog = self.get_cog("PlaybackCog")
+                        if playback_cog:
+                            await playback_cog._recover_voice(gid, vc)
+                        else:
+                            self._start_stream(gid, vc)
                 elif state.voice_channel_id:
                     channel = guild.get_channel(state.voice_channel_id)
                     if channel and isinstance(channel, discord.VoiceChannel):
@@ -269,10 +278,13 @@ class ObibokBot(commands.Bot):
                         try:
                             if vc:
                                 await vc.disconnect()
-                            await channel.connect()
+                            new_vc = await channel.connect()
+                            playback_cog = self.get_cog("PlaybackCog")
+                            if playback_cog:
+                                await playback_cog._recover_voice(gid, new_vc)
                             logger.info(
                                 "Health watchdog: voice reconnected for guild %s, "
-                                "on_voice_state_update will restart stream",
+                                "stream recovery complete",
                                 gid,
                             )
                         except Exception as exc:

@@ -16,6 +16,7 @@ CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
 DEFAULT_TIMEOUT = 600
 CONSOLE_TIMEOUT = 3600
 CONSOLE_TIMEOUT_UNKNOWN = 180
+SAP_LOOP_TIMEOUT = 3600
 
 
 def is_console_format(filepath: str) -> bool:
@@ -73,6 +74,7 @@ def should_advance_after_stop(
 class TrackMonitor:
     audio: AudioController
     empty_timeout: int = 0
+    get_voice_connected: Callable[[], bool] | None = None
     _last_output: int = field(default=0, init=False, repr=False)
     _last_track: str = field(default="", init=False, repr=False)
     _cached_song_length: int = field(default=-1, init=False, repr=False)
@@ -88,7 +90,10 @@ class TrackMonitor:
         on_track_end: Callable[[PlaybackState], Awaitable[None]],
         on_empty: Callable[[], Awaitable[None]] | None = None,
         get_voice_members: Callable[[], int] | None = None,
+        get_voice_connected: Callable[[], bool] | None = None,
     ) -> None:
+        if get_voice_connected is None:
+            get_voice_connected = self.get_voice_connected
         self._last_output = 0
         self._last_track = ""
         self._cached_song_length = -1
@@ -101,7 +106,9 @@ class TrackMonitor:
         while True:
             await asyncio.sleep(0.25)
             try:
-                await self._tick(state, on_track_end, on_empty, get_voice_members)
+                await self._tick(
+                    state, on_track_end, on_empty, get_voice_members, get_voice_connected
+                )
                 if not state.is_playing:
                     return
             except asyncio.CancelledError:
@@ -115,8 +122,17 @@ class TrackMonitor:
         on_track_end: Callable[[PlaybackState], Awaitable[None]],
         on_empty: Callable[[], Awaitable[None]] | None,
         get_voice_members: Callable[[], int] | None,
+        get_voice_connected: Callable[[], bool] | None = None,
     ) -> None:
         if not state.is_playing:
+            return
+
+        if get_voice_connected is not None and not get_voice_connected():
+            # Voice transport loss is not an Audacious track transition.
+            # Suspend all track-end detection while disconnected.
+            self._empty_since = None
+            self._not_playing_since = None
+            self._drop_confirmed_since = None
             return
 
         if get_voice_members and on_empty:
@@ -258,7 +274,14 @@ class TrackMonitor:
             if sid_total is not None and sid_total > total:
                 total = sid_total
 
-        timeout = compute_timeout(total, is_console_format=is_console)
+        if (
+            track.lower().endswith(".sap")
+            and hasattr(self.audio, "sap_has_loop")
+            and self.audio.sap_has_loop()
+        ):
+            timeout = SAP_LOOP_TIMEOUT
+        else:
+            timeout = compute_timeout(total, is_console_format=is_console)
 
         if is_console:
             # Console/GME formats: output-length resets at subsong

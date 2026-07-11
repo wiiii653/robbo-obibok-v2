@@ -84,7 +84,7 @@ class PlaybackCog(commands.Cog):
             vc = guild.voice_client
             if vc and vc.is_connected():
                 logger.info("Restarting stream for guild %s after RESUME", guild_id)
-                self.bot._start_stream(guild_id, vc)
+                await self._recover_voice(guild_id, vc)
             else:
                 state = self.bot.get_state(guild_id)
                 if state.is_playing and state.voice_channel_id:
@@ -94,10 +94,7 @@ class PlaybackCog(commands.Cog):
                             if vc:
                                 await vc.disconnect()
                             new_vc = await channel.connect()
-                            self.bot._start_stream(guild_id, new_vc)
-                            await self.bot._cancel_monitor(guild_id)
-                            ctx = self._get_fallback_ctx(guild.me, new_vc)
-                            await self._replace_monitor(ctx, state)
+                            await self._recover_voice(guild_id, new_vc)
                             logger.info("Voice reconnected for guild %s after RESUME", guild_id)
                         except Exception as exc:
                             logger.warning("Voice reconnect failed for guild %s: %s", guild_id, exc)
@@ -114,10 +111,7 @@ class PlaybackCog(commands.Cog):
             vc = guild.voice_client
             if vc and vc.is_connected():
                 logger.info("Restarting orphaned stream for guild %s after RESUME", guild_id)
-                self.bot._start_stream(guild_id, vc)
-                await self.bot._cancel_monitor(guild_id)
-                ctx = self._get_fallback_ctx(guild.me, vc)
-                await self._replace_monitor(ctx, state)
+                await self._recover_voice(guild_id, vc)
             elif state.voice_channel_id:
                 channel = guild.get_channel(state.voice_channel_id)
                 if channel:
@@ -125,10 +119,7 @@ class PlaybackCog(commands.Cog):
                         if vc:
                             await vc.disconnect()
                         new_vc = await channel.connect()
-                        self.bot._start_stream(guild_id, new_vc)
-                        await self.bot._cancel_monitor(guild_id)
-                        ctx = self._get_fallback_ctx(guild.me, new_vc)
-                        await self._replace_monitor(ctx, state)
+                        await self._recover_voice(guild_id, new_vc)
                         logger.info("Voice reconnected for orphaned guild %s after RESUME", guild_id)
                     except Exception as exc:
                         logger.warning("Orphaned voice reconnect failed for guild %s: %s", guild_id, exc)
@@ -213,9 +204,7 @@ class PlaybackCog(commands.Cog):
                     logger.info("Bot reconnected to voice, restarting stream")
                     vc = member.guild.voice_client
                     if vc and vc.is_connected():
-                        self.bot._start_stream(guild_id, vc)
-                        await self.bot._cancel_monitor(guild_id)
-                        await self._replace_monitor(self._get_fallback_ctx(member, vc), state)
+                        await self._recover_voice(guild_id, vc)
             return
 
         # Handle bot's own voice reconnect — restart stream if we were playing
@@ -535,6 +524,21 @@ class PlaybackCog(commands.Cog):
         await self.bot._cancel_monitor(ctx.guild.id)
         self._install_monitor(ctx, state)
 
+    def _voice_connected(self, guild_id: int) -> bool:
+        guild = self.bot.get_guild(guild_id)
+        vc = guild.voice_client if guild else None
+        return bool(vc and vc.is_connected())
+
+    async def _recover_voice(self, guild_id: int, vc: discord.VoiceClient) -> None:
+        """Recover Discord transport while preserving an existing track monitor."""
+        self.bot._start_stream(guild_id, vc)
+        task = self.bot._monitor_tasks.get(guild_id)
+        if task and not task.done():
+            return
+        guild = self.bot.get_guild(guild_id)
+        if guild:
+            self._install_monitor(self._get_fallback_ctx(guild.me, vc), self.bot.get_state(guild_id))
+
     def _install_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
         if not ctx.guild:
             return
@@ -608,10 +612,17 @@ class PlaybackCog(commands.Cog):
         def get_voice_members() -> int:
             return self._voice_member_count(ctx)
 
+        def get_voice_connected() -> bool:
+            return self._voice_connected(guild_id)
+
         async def run_monitor() -> None:
             try:
                 await monitor.monitor_loop(
-                    state, on_track_end, on_empty, get_voice_members
+                    state,
+                    on_track_end,
+                    on_empty,
+                    get_voice_members,
+                    get_voice_connected,
                 )
             except asyncio.CancelledError:
                 raise
