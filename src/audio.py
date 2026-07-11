@@ -246,6 +246,24 @@ def _get_sap_time_seconds(filepath: str) -> int | None:
     return sum(times)
 
 
+def _sap_has_loop(filepath: str) -> bool:
+    """Return whether an SAP TIME header contains the LOOP flag."""
+    try:
+        with open(filepath, "r", encoding="ascii", errors="replace") as f:
+            for _ in range(30):
+                line = f.readline()
+                if not line:
+                    break
+                stripped = line.strip().rstrip("\r")
+                if stripped.upper().startswith("TIME "):
+                    fields = stripped.split()
+                    if any(field.upper() == "LOOP" for field in fields[2:]):
+                        return True
+    except OSError:
+        pass
+    return False
+
+
 def _get_ay_max_track(filepath: str) -> int:
     """Read the AY (ZXAYEMUL) header and return max_track, or 0.
 
@@ -693,6 +711,10 @@ class AudioController:
         if gme_total is not None:
             return gme_total
         return None
+
+    def sap_has_loop(self) -> bool:
+        fname = self._last_filepath or current_song_filename()
+        return fname.lower().endswith(".sap") and _sap_has_loop(fname)
 
     def total_ay_time(self) -> int | None:
         """Return total playback time for multi-track AY, or None.

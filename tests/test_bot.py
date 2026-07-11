@@ -342,7 +342,7 @@ class TestPlaybackLogic:
         cog._after_track_started = AsyncMock()
         cog._play_and_monitor = AsyncMock()
 
-        async def monitor_once(monitored_state, on_track_end, on_empty, get_voice_members):
+        async def monitor_once(monitored_state, on_track_end, on_empty, get_voice_members, get_voice_connected=None):
             await on_track_end(monitored_state)
 
         bot.monitor.monitor_loop = monitor_once
