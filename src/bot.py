@@ -234,6 +234,64 @@ class ObibokBot(commands.Bot):
                         gid,
                     )
                     self._start_stream(gid, vc)
+            # Recover orphaned playback — state says playing but no active stream
+            # (happens when voice disconnects and stream ends without RECONNECT)
+            now = time.monotonic()
+            min_interval = getattr(self, "_orphaned_cooldown", 60.0)
+            last = getattr(self, "_last_orphaned_check", 0.0)
+            if now - last < min_interval:
+                continue
+            self._last_orphaned_check = now
+            for gid, state in list(self._states.items()):
+                if not state.is_playing:
+                    continue
+                if gid in self._active_streams:
+                    continue
+                guild = self.get_guild(gid)
+                if not guild:
+                    continue
+                vc = guild.voice_client
+                if vc and vc.is_connected():
+                    voice_channel = vc.channel
+                    if voice_channel:
+                        logger.warning(
+                            "Health watchdog: voice connected but stream lost for guild %s, restarting",
+                            gid,
+                        )
+                        self._start_stream(gid, vc)
+                elif state.voice_channel_id:
+                    channel = guild.get_channel(state.voice_channel_id)
+                    if channel and isinstance(channel, discord.VoiceChannel):
+                        logger.warning(
+                            "Health watchdog: reconnecting voice for guild %s (orphaned playback)",
+                            gid,
+                        )
+                        try:
+                            if vc:
+                                await vc.disconnect()
+                            await channel.connect()
+                            logger.info(
+                                "Health watchdog: voice reconnected for guild %s, "
+                                "on_voice_state_update will restart stream",
+                                gid,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Health watchdog: voice reconnect failed for guild %s: %s",
+                                gid,
+                                exc,
+                            )
+                    else:
+                        logger.warning(
+                            "Health watchdog: voice_channel_id %s not found or invalid for guild %s, "
+                            "stopping playback",
+                            state.voice_channel_id,
+                            gid,
+                        )
+                        state.is_playing = False
+                else:
+                    # No voice channel remembered — nothing to reconnect to
+                    pass
 
 
 __all__ = ["ObibokBot", "CollectionCog", "FavoritesCog", "PlaybackCog", "ToolsCog"]
