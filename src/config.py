@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+
 @dataclass(slots=True)
 class AudioConfig:
     sink_name: str = "robbo_bot"

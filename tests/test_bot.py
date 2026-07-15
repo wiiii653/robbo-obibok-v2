@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -229,14 +228,14 @@ class TestPlaybackLogic:
         cog = PlaybackCog(bot)
         bot.get_state(123).queue = ["a.sap"]
         bot.playback_lease.acquire(123, "Guild")
-        bot._cancel_monitor = MagicMock()
+        bot.cancel_monitor = MagicMock()
         ctx = MagicMock()
         ctx.guild.id = 123
         ctx.send = AsyncMock()
 
         await cog.jump.callback(cog, ctx, 2)
 
-        bot._cancel_monitor.assert_not_called()
+        bot.cancel_monitor.assert_not_called()
         ctx.send.assert_awaited_once_with("Invalid position.")
 
     @pytest.mark.asyncio
@@ -315,8 +314,8 @@ class TestPlaybackLogic:
         bot.playback_lease.acquire(123, "Guild")
         bot.engine.play_track = AsyncMock(return_value=None)
         bot.engine.stop = AsyncMock()
-        bot._start_stream = MagicMock()
-        bot._stop_stream = MagicMock()
+        bot.start_stream = MagicMock()
+        bot.stop_stream = MagicMock()
         voice_client = MagicMock()
         voice_client.disconnect = AsyncMock()
         ctx = MagicMock()
@@ -327,7 +326,7 @@ class TestPlaybackLogic:
         await cog._play_and_monitor(ctx, state)
 
         bot.engine.stop.assert_awaited_once_with(state)
-        bot._stop_stream.assert_called_once_with(123)
+        bot.stop_stream.assert_called_once_with(123)
         voice_client.disconnect.assert_awaited_once()
         assert bot.playback_lease.owner_guild_id is None
 
@@ -342,7 +341,9 @@ class TestPlaybackLogic:
         cog._after_track_started = AsyncMock()
         cog._play_and_monitor = AsyncMock()
 
-        async def monitor_once(monitored_state, on_track_end, on_empty, get_voice_members, get_voice_connected=None):
+        async def monitor_once(
+            monitored_state, on_track_end, on_empty, get_voice_members, get_voice_connected=None
+        ):
             await on_track_end(monitored_state)
 
         bot.monitor.monitor_loop = monitor_once
@@ -351,7 +352,8 @@ class TestPlaybackLogic:
         ctx.voice_client.channel.members = []
 
         cog._install_monitor(ctx, state)
-        task = bot._monitor_tasks[123]
+        task = bot.get_monitor_task(123)
+        assert task is not None
         await task
 
         bot.engine.skip_track.assert_awaited_once_with(state)

@@ -110,8 +110,8 @@ class CollectionCog(commands.Cog):
 
         if active:
             await self.bot.engine.stop(state)
-            self.bot._stop_stream(ctx.guild.id)
-            await self.bot._cancel_monitor(ctx.guild.id)
+            self.bot.stop_stream(ctx.guild.id)
+            await self.bot.cancel_monitor(ctx.guild.id)
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
 
