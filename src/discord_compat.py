@@ -17,7 +17,6 @@ except ModuleNotFoundError:  # pragma: no cover - covered by local tests
         value: str
         inline: bool = True
 
-
     class _Embed:
         def __init__(self, *, title: str = "", description: str = "", color: int = 0) -> None:
             self.title = title

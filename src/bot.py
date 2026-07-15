@@ -13,7 +13,7 @@ from .lease import PlaybackLease
 from .models import PlaybackState
 from .monitor import TrackMonitor
 from .playback import PlaybackEngine
-from .stream import MonitorAudioSource
+from .voice_streams import VoiceStreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class ObibokBot(commands.Bot):
         self._states: dict[int, PlaybackState] = {}
         self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
-        self._active_streams: dict[int, MonitorAudioSource] = {}
+        self.streams = VoiceStreamManager(sink_name, self._on_stream_end_callback)
         self._background_tasks: list[asyncio.Task] = []
         self._playback_sessions: dict[int, int] = {}
         self._stream_restart_attempts: dict[int, int] = {}
@@ -71,34 +71,20 @@ class ObibokBot(commands.Bot):
             del self._np_messages[oldest]
         self._np_messages[msg_id] = data
 
-    def _start_stream(
+    def track_now_playing_message(self, msg_id: int, data: dict[str, Any]) -> None:
+        """Register a now-playing message for reaction-based favorites."""
+        self._track_np_message(msg_id, data)
+
+    def start_stream(
         self, guild_id: int, voice_client: discord.VoiceClient, *, reset_attempts: bool = True
     ) -> None:
-        """Start or restart the MonitorAudioSource on the given voice client."""
-        if not voice_client or not voice_client.is_connected():
-            logger.warning("_start_stream: voice client not connected for guild %s", guild_id)
-            return
-        old = self._active_streams.pop(guild_id, None)
-        if old and hasattr(old, "cleanup"):
-            old._closed = True
-            old.cleanup()
-        source = MonitorAudioSource(sink_name=self.sink_name)
-        source.source_id = id(source)
-        voice_client.stop()
-        voice_client.play(
-            source,
-            after=lambda e: self._on_stream_end_callback(guild_id, e, source.source_id),
-        )
-        self._active_streams[guild_id] = source
-        if reset_attempts:
+        """Start or restart the Discord audio stream for a guild."""
+        if self.streams.start(guild_id, voice_client) and reset_attempts:
             self._stream_restart_attempts[guild_id] = 0
 
-    def _stop_stream(self, guild_id: int) -> None:
-        source = self._active_streams.get(guild_id)
-        if source and hasattr(source, "cleanup"):
-            source._closed = True
-            source.cleanup()
-        self._active_streams.pop(guild_id, None)
+    def stop_stream(self, guild_id: int) -> None:
+        """Stop the Discord audio stream while keeping voice connected."""
+        self.streams.stop(guild_id)
 
     def _on_stream_end_callback(
         self, guild_id: int, error: Exception | None, source_id: int
@@ -106,9 +92,7 @@ class ObibokBot(commands.Bot):
         """Bridge Discord's audio-thread callback onto the asyncio event loop."""
         self.loop.call_soon_threadsafe(self._schedule_stream_end, guild_id, error, source_id)
 
-    def _schedule_stream_end(
-        self, guild_id: int, error: Exception | None, source_id: int
-    ) -> None:
+    def _schedule_stream_end(self, guild_id: int, error: Exception | None, source_id: int) -> None:
         asyncio.create_task(self._on_stream_end_on_loop(guild_id, error, source_id))
 
     async def _on_stream_end_on_loop(
@@ -117,10 +101,7 @@ class ObibokBot(commands.Bot):
         if error:
             self.increment_metric("stream_restarts")
             logger.warning("Stream ended with error for guild %s: %s", guild_id, error)
-        current = self._active_streams.get(guild_id)
-        is_current = current is not None and getattr(current, "source_id", None) == source_id
-        if is_current:
-            self._active_streams.pop(guild_id, None)
+        is_current = self.streams.remove_if_current(guild_id, source_id)
         if error and is_current:
             asyncio.create_task(self._restart_stream_after_error(guild_id))
 
@@ -131,7 +112,7 @@ class ObibokBot(commands.Bot):
             logger.error("Stream restart limit reached for guild %s; ending session", guild_id)
             state = self.get_state(guild_id)
             await self.engine.stop(state)
-            await self._cancel_monitor(guild_id)
+            await self.cancel_monitor(guild_id)
             self.release_lease(guild_id)
             guild = self.get_guild(guild_id)
             if guild and guild.voice_client:
@@ -148,7 +129,7 @@ class ObibokBot(commands.Bot):
         guild = self.get_guild(guild_id)
         vc = guild.voice_client if guild else None
         if vc and vc.is_connected() and self.get_state(guild_id).is_playing:
-            self._start_stream(guild_id, vc, reset_attempts=False)
+            self.start_stream(guild_id, vc, reset_attempts=False)
 
     def try_acquire_lease(self, guild: discord.Guild) -> bool:
         return self.playback_lease.acquire(guild.id, guild.name)
@@ -157,7 +138,7 @@ class ObibokBot(commands.Bot):
         if guild_id is None or self.playback_lease.owner_guild_id == guild_id:
             self.playback_lease.release()
 
-    async def _cancel_monitor(self, guild_id: int) -> None:
+    async def cancel_monitor(self, guild_id: int) -> None:
         task = self._monitor_tasks.pop(guild_id, None)
         if task and not task.done() and task is not asyncio.current_task():
             task.cancel()
@@ -168,12 +149,33 @@ class ObibokBot(commands.Bot):
             except Exception as exc:
                 logger.warning("Monitor task failed during cancellation: %s", exc)
 
+    def get_monitor_task(self, guild_id: int) -> asyncio.Task | None:
+        return self._monitor_tasks.get(guild_id)
+
+    def register_monitor_task(self, guild_id: int, task: asyncio.Task) -> None:
+        self._monitor_tasks[guild_id] = task
+
+    def clear_monitor_task(self, guild_id: int, task: asyncio.Task | None) -> None:
+        if self._monitor_tasks.get(guild_id) is task:
+            self._monitor_tasks.pop(guild_id, None)
+
+    def begin_playback_session(self, guild_id: int) -> int:
+        session = self._playback_sessions.get(guild_id, 0) + 1
+        self._playback_sessions[guild_id] = session
+        return session
+
+    def playback_session(self, guild_id: int) -> int:
+        return self._playback_sessions.get(guild_id, 0)
+
+    def playback_states(self) -> tuple[tuple[int, PlaybackState], ...]:
+        return tuple(self._states.items())
+
     async def _handle_voice_disconnect(self, guild_id: int) -> None:
         """Clear a dead voice transport before attempting a bounded reconnect."""
-        self._stop_stream(guild_id)
+        self.stop_stream(guild_id)
         state = self.get_state(guild_id)
         state.is_playing = False
-        await self._cancel_monitor(guild_id)
+        await self.cancel_monitor(guild_id)
         self.release_lease(guild_id)
         self._pending_voice_reconnects.add(guild_id)
 
@@ -212,7 +214,7 @@ class ObibokBot(commands.Bot):
                 if playback_cog:
                     await playback_cog._recover_voice(guild_id, new_vc)
                 else:
-                    self._start_stream(guild_id, new_vc)
+                    self.start_stream(guild_id, new_vc)
                 logger.info(
                     "Health watchdog: voice reconnected for guild %s, stream recovery complete",
                     guild_id,
@@ -231,12 +233,14 @@ class ObibokBot(commands.Bot):
 
         if attempts < 3:
             return
-        logger.error("Health watchdog: reconnect limit reached for guild %s; stopping playback", guild_id)
+        logger.error(
+            "Health watchdog: reconnect limit reached for guild %s; stopping playback", guild_id
+        )
         self._pending_voice_reconnects.discard(guild_id)
         self._voice_reconnect_attempts.pop(guild_id, None)
         state.is_playing = False
         await self.engine.stop(state)
-        await self._cancel_monitor(guild_id)
+        await self.cancel_monitor(guild_id)
         self.release_lease(guild_id)
 
     def health_snapshot(self) -> dict[str, object]:
@@ -249,7 +253,7 @@ class ObibokBot(commands.Bot):
             "guilds": len(self.guilds),
             "tracked_states": len(states),
             "playing_guilds": sum(1 for state in states if state.is_playing),
-            "active_streams": len(self._active_streams),
+            "active_streams": self.streams.count,
             "monitor_tasks": sum(not task.done() for task in self._monitor_tasks.values()),
             "background_tasks": sum(not task.done() for task in self._background_tasks),
             "lease_owner": self.playback_lease.owner_guild_id,
@@ -285,8 +289,7 @@ class ObibokBot(commands.Bot):
             except Exception as exc:
                 logger.warning("Background task failed during shutdown: %s", exc)
         self._background_tasks.clear()
-        for guild_id in list(self._active_streams):
-            self._stop_stream(guild_id)
+        self.streams.close()
         monitor_tasks = list(self._monitor_tasks.values())
         for task in monitor_tasks:
             task.cancel()
@@ -308,7 +311,7 @@ class ObibokBot(commands.Bot):
             except Exception as exc:
                 logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
             # Check active voice streams
-            for gid in list(self._active_streams.keys()):
+            for gid in self.streams.guild_ids():
                 guild = self.get_guild(gid)
                 if not guild:
                     continue
@@ -327,7 +330,7 @@ class ObibokBot(commands.Bot):
                     if playback_cog:
                         await playback_cog._recover_voice(gid, vc)
                     else:
-                        self._start_stream(gid, vc)
+                        self.start_stream(gid, vc)
             for gid in list(self._pending_voice_reconnects):
                 await self._retry_voice_reconnect(gid)
             # Recover orphaned playback — state says playing but no active stream
@@ -341,7 +344,7 @@ class ObibokBot(commands.Bot):
             for gid, state in list(self._states.items()):
                 if not state.is_playing:
                     continue
-                if gid in self._active_streams:
+                if self.streams.contains(gid):
                     continue
                 guild = self.get_guild(gid)
                 if not guild:
@@ -358,7 +361,7 @@ class ObibokBot(commands.Bot):
                         if playback_cog:
                             await playback_cog._recover_voice(gid, vc)
                         else:
-                            self._start_stream(gid, vc)
+                            self.start_stream(gid, vc)
                 else:
                     await self._handle_voice_disconnect(gid)
                     await self._retry_voice_reconnect(gid)

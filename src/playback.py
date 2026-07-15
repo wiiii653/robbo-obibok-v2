@@ -10,7 +10,7 @@ from pathlib import Path
 from .audio import AudioController
 from .collection_loader import extract_metadata, get_collection, load_raw_paths
 from .favorites import Favorites
-from .models import PlaybackState
+from .models import Collection, PlaybackState
 from .queue import (
     Blacklist,
     can_restore_queue,
@@ -22,7 +22,6 @@ from .queue import (
     restore_queue,
     save_queue,
 )
-
 
 logger = logging.getLogger(__name__)
 

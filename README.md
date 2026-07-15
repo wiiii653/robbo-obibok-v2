@@ -21,7 +21,7 @@ Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-gard
 
 ## What's New in v2
 
-Complete rewrite with a **flat, minimal architecture** — 23 source modules instead of 76, 270+ tests, same features. No more entrypoint facades, runtime assemblies, or compatibility layers.
+Complete rewrite with a focused architecture — small domain modules, Discord command cogs, and explicit runtime services instead of entrypoint facades or compatibility layers.
 
 ## Features
 
@@ -249,7 +249,7 @@ format_volumes:
 
 ```
 robbo-obibok-v2/
-├── src/                     # Source modules (23 files)
+├── src/                     # Source modules
 │   ├── __init__.py
 │   ├── __main__.py          # python -m src entry point
 │   ├── audio.py             # PulseAudio + Audacious control
@@ -272,6 +272,7 @@ robbo-obibok-v2/
 │   ├── playback_cog.py      # Playback commands (!play, !skip, etc.)
 │   ├── queue.py             # Queue shuffle, blacklist, persistence
 │   ├── stream.py            # Voice stream source
+│   ├── voice_streams.py      # Discord stream lifecycle ownership
 │   └── tools_cog.py         # Utility commands (!stats, !ocko, !help)
 ├── tests/                   # 230+ unit tests
 ├── scripts/                 # Index builder scripts
@@ -282,6 +283,14 @@ robbo-obibok-v2/
 ├── Makefile                 # Build/test commands
 ├── run_bot.sh               # Entrypoint wrapper
 ```
+
+### Runtime boundaries
+
+- `PlaybackEngine` owns queues, track resolution, and player commands.
+- Discord cogs translate commands and gateway events into engine operations.
+- `ObibokBot` owns application state, leases, and recovery policy.
+- `VoiceStreamManager` owns only Discord audio-source lifecycle; it never selects tracks or changes queue state.
+- `TrackMonitor` is copied per active session and owns track-end detection.
 
 ## Audio Effects
 
