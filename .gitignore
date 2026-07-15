@@ -27,5 +27,6 @@ playlists/
 .mypy_cache/
 AGENTS.md
 BUILD_PLAN.md
+.hermes/
 *.lock
 *.part
