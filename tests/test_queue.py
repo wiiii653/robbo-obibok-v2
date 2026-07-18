@@ -161,6 +161,24 @@ class TestQueuePersistence:
         }
         assert can_restore_queue(saved, ["a.sap", "b.sid"], "asma") is True
 
+    def test_can_restore_queue_large_collection(self):
+        """Regression: list-membership restore was O(n^2) and froze the
+        event loop for minutes on modarchive-sized (225k) queues."""
+        import random
+        import time
+
+        tracks = [f"dir/{i}.mod" for i in range(60_000)]
+        queue = random.sample(tracks, len(tracks))
+        saved = {
+            "queue": queue,
+            "position": 0,
+            "is_looping": False,
+            "collection_mode": "modarchive",
+        }
+        start = time.monotonic()
+        assert can_restore_queue(saved, tracks, "modarchive") is True
+        assert time.monotonic() - start < 5.0
+
 
 class TestBlacklist:
     def test_add_and_check(self, tmp_path):

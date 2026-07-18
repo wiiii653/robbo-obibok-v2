@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import struct
 from pathlib import Path
 
 from .models import COLLECTIONS, FLIP_ORDER, Collection
@@ -78,7 +77,6 @@ def parse_sid_header(filepath: str) -> dict[str, str]:
     #   22-53: title (32 bytes)
     #   54-85: author (32 bytes)
     #   86-117: copyright (32 bytes)
-    vers = struct.unpack(">H", data[4:6])[0]  # noqa: F841
     title = data[22:54].decode("ascii", errors="replace")
     author = data[54:86].decode("ascii", errors="replace")
     copyright_str = data[86:118].decode("ascii", errors="replace")

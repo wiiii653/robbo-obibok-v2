@@ -54,7 +54,7 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 | `!np` | Show current track info |
 | `!queue` / `!q` | Show upcoming tracks |
 | `!history` | Show last 10 played tracks |
-| `!sleep <min>` | Stop playback after N minutes |
+| `!sleep <min>` | Stop playback after N minutes (`!sleep 0` cancels; re-invoking replaces the timer) |
 | `!loop` | Toggle repeat current track |
 | `!volume <0-200>` | Set playback volume |
 | `!clear` | Clear the queue |

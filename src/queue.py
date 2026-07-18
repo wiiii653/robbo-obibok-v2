@@ -72,7 +72,10 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
             or not all(isinstance(item, str) and item for item in queue_collection_ids)
         ):
             return False
-    return all(item in tracks for item in queue)
+    # Set membership — list `in` here is O(n²) and froze the event loop for
+    # minutes on large collections (225k-track modarchive queue).
+    track_set = set(tracks)
+    return all(item in track_set for item in queue)
 
 
 def next_track(state: PlaybackState) -> str | None:
