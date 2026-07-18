@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -507,6 +507,131 @@ class TestPlaybackCommandBranches:
         assert state.queue == []
         ctx.voice_client.disconnect.assert_awaited_once()
         ctx.send.assert_awaited_once_with("Queue cleared.")
+
+
+class TestSleepTimer:
+    @pytest.mark.asyncio
+    async def test_sleep_registers_task(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, 5)
+
+        assert 123 in bot._sleep_tasks
+        ctx.send.assert_awaited_once_with("Stopping in 5 minutes...")
+        bot.cancel_sleep_task(123)
+
+    @pytest.mark.asyncio
+    async def test_sleep_replaces_existing_timer(self, tmp_path):
+        """Two consecutive !sleep calls must not stack — the first timer
+        is cancelled and replaced by the second."""
+        import asyncio
+
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, 5)
+        first = bot._sleep_tasks[123]
+        await cog.sleep.callback(cog, ctx, 10)
+        second = bot._sleep_tasks[123]
+
+        assert first is not second
+        await asyncio.sleep(0)  # let cancellation be delivered
+        assert first.done()
+        assert not second.done()
+        # The replaced task's cleanup must not evict the new registration
+        assert bot._sleep_tasks[123] is second
+        bot.cancel_sleep_task(123)
+
+    @pytest.mark.asyncio
+    async def test_sleep_zero_cancels_timer(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, 5)
+        await cog.sleep.callback(cog, ctx, 0)
+
+        assert ctx.send.await_args_list[-1].args == ("Sleep timer cancelled.",)
+        assert 123 not in bot._sleep_tasks
+
+    @pytest.mark.asyncio
+    async def test_sleep_zero_without_timer(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, 0)
+
+        ctx.send.assert_awaited_once_with("No sleep timer set.")
+
+    @pytest.mark.asyncio
+    async def test_sleep_negative_rejected(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, -1)
+
+        ctx.send.assert_awaited_once_with("Sleep time must be zero (cancel) or greater.")
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_sleep_timer(self, tmp_path):
+        import asyncio
+
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client.disconnect = AsyncMock()
+        ctx.send = AsyncMock()
+
+        await cog.sleep.callback(cog, ctx, 5)
+        task = bot._sleep_tasks[123]
+        await cog.stop.callback(cog, ctx)
+
+        assert 123 not in bot._sleep_tasks
+        await asyncio.sleep(0)
+        assert task.done()
+
+    @pytest.mark.asyncio
+    async def test_sleep_timer_fires_and_stops(self, tmp_path):
+        """Full path: timer fires, session matches, stop runs — and stop's
+        cancel_sleep_task must not cancel the very task executing it."""
+        bot = _make_bot(tmp_path)
+        cog = PlaybackCog(bot)
+        bot.playback_lease.acquire(123, "Guild")
+        ctx = MagicMock()
+        ctx.guild.id = 123
+        ctx.voice_client = None
+        ctx.send = AsyncMock()
+
+        with patch("src.playback_cog.asyncio.sleep", new=AsyncMock(return_value=None)):
+            await cog.sleep.callback(cog, ctx, 1)
+            task = bot._sleep_tasks[123]
+            await task
+
+        assert 123 not in bot._sleep_tasks
+        assert bot.playback_lease.owner_guild_id is None
+        assert ctx.send.await_args_list[-1].args == ("Stopped.",)
 
 
 class TestFavoritesCommandBranches:

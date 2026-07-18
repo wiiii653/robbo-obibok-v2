@@ -122,6 +122,43 @@ class TestPlaybackEngine:
         results = engine.search("track", state)
         assert len(results) == 10
 
+    def test_search_metadata_probes_capped(self, tmp_path, monkeypatch):
+        """Metadata fallback must not open unbounded files on huge collections."""
+        from src import playback as playback_module
+
+        engine = self._make_engine(tmp_path)
+        # No path contains the query — every track would be a metadata probe.
+        state = PlaybackState(
+            collection_mode="asma",
+            tracks=[f"dir/{i}.sap" for i in range(2000)],
+        )
+        probe_count = 0
+
+        def fake_metadata(path, collection_id):
+            nonlocal probe_count
+            probe_count += 1
+            return {}
+
+        monkeypatch.setattr("src.playback.extract_metadata", fake_metadata)
+        results = engine.search("no-such-track", state)
+
+        assert results == []
+        assert probe_count == playback_module.MAX_METADATA_PROBES
+
+    def test_search_path_matching_continues_after_probe_cap(self, tmp_path, monkeypatch):
+        """Path matching is cheap and must keep working past the probe cap."""
+        from src import playback as playback_module
+
+        engine = self._make_engine(tmp_path)
+        tracks = [f"dir/{i}.sap" for i in range(playback_module.MAX_METADATA_PROBES + 10)]
+        tracks.append("dir/needle.sap")
+        state = PlaybackState(collection_mode="asma", tracks=tracks)
+
+        monkeypatch.setattr("src.playback.extract_metadata", lambda path, cid: {})
+        results = engine.search("needle", state)
+
+        assert results == ["dir/needle.sap"]
+
     def test_queue_info(self, tmp_path):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(queue=["a.sap", "b.sap", "c.sap"], position=1)
@@ -129,6 +166,48 @@ class TestPlaybackEngine:
         assert len(info) == 3
         assert info[1]["is_current"] is True
         assert info[0]["is_current"] is False
+
+    @pytest.mark.asyncio
+    async def test_queue_save_debounced(self, tmp_path, monkeypatch):
+        """Per-track saves within the debounce window collapse into one write."""
+        from src import playback as playback_module
+
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(guild_id=123, queue=["a.sap", "b.sap"], position=0)
+        save_mock = MagicMock(return_value=True)
+        monkeypatch.setattr("src.playback.save_queue", save_mock)
+
+        await engine._save_queue(state)
+        await engine._save_queue(state)
+        assert save_mock.call_count == 1
+
+        # Past the debounce window -> saves again
+        engine._last_queue_save[123] -= playback_module.QUEUE_SAVE_MIN_INTERVAL + 1
+        await engine._save_queue(state)
+        assert save_mock.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_queue_save_immediate_bypasses_debounce(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(guild_id=123, queue=["a.sap"], position=0)
+        save_mock = MagicMock(return_value=True)
+        monkeypatch.setattr("src.playback.save_queue", save_mock)
+
+        await engine._save_queue(state)
+        await engine._save_queue(state, immediate=True)
+        assert save_mock.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stop_saves_immediately_after_recent_save(self, tmp_path, monkeypatch):
+        """stop() must persist even right after a debounced per-track save."""
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(guild_id=123, queue=["a.sap"], position=0, is_playing=True)
+        save_mock = MagicMock(return_value=True)
+        monkeypatch.setattr("src.playback.save_queue", save_mock)
+
+        await engine._save_queue(state)  # per-track save, starts the window
+        await engine.stop(state)  # must not be debounced
+        assert save_mock.call_count == 2
 
     def test_toggle_favorite(self, tmp_path):
         engine = self._make_engine(tmp_path)

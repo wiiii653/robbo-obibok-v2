@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,16 @@ from .queue import (
 
 logger = logging.getLogger(__name__)
 
+# Max file metadata reads per search. Path matching is cheap string work,
+# but the metadata fallback opens one file per track — unbounded, that meant
+# thousands of file opens on modarchive-sized (225k) collections.
+MAX_METADATA_PROBES = 500
+
+# Min seconds between per-track queue writes. A full queue file can be
+# 10MB+ (modarchive) — rewriting it on every track change is wasteful.
+# stop/clear still save immediately; a crash just resumes a few tracks back.
+QUEUE_SAVE_MIN_INTERVAL = 60.0
+
 
 @dataclass
 class PlaybackEngine:
@@ -36,6 +47,20 @@ class PlaybackEngine:
     shuffle_queue: bool = True
     default_loop: bool = False
     _guild_locks: dict[int, asyncio.Lock] = field(default_factory=dict, init=False, repr=False)
+    _last_queue_save: dict[int, float] = field(default_factory=dict, init=False, repr=False)
+
+    async def _save_queue(self, state: PlaybackState, *, immediate: bool = False) -> None:
+        """Persist the queue; per-track saves are debounced per guild."""
+        if not state.guild_id:
+            return
+        now = time.monotonic()
+        if (
+            not immediate
+            and now - self._last_queue_save.get(state.guild_id, 0.0) < QUEUE_SAVE_MIN_INTERVAL
+        ):
+            return
+        self._last_queue_save[state.guild_id] = now
+        await asyncio.to_thread(save_queue, state, self.root_dir)
 
     def _lock_for(self, state: PlaybackState) -> asyncio.Lock:
         return self._guild_locks.setdefault(state.guild_id, asyncio.Lock())
@@ -60,7 +85,7 @@ class PlaybackEngine:
         state.tracks = paths
         self._reset_runtime_state(state)
         state.queue_owner_user_id = user_id
-        blacklist_tracks = await asyncio.to_thread(self.blacklist.get_tracks, user_id)
+        blacklist_tracks = set(await asyncio.to_thread(self.blacklist.get_tracks, user_id))
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
         if state.guild_id:
@@ -80,8 +105,7 @@ class PlaybackEngine:
             state.is_looping = self.default_loop
         track = current_track(state)
         if track:
-            if state.guild_id:
-                await asyncio.to_thread(save_queue, state, self.root_dir)
+            await self._save_queue(state, immediate=True)
         return track
 
     async def play_track(self, state: PlaybackState) -> str | None:
@@ -130,7 +154,7 @@ class PlaybackEngine:
                 state.history.append(track)
                 if len(state.history) > 20:
                     state.history = state.history[-20:]
-                await asyncio.to_thread(save_queue, state, self.root_dir)
+                await self._save_queue(state)
                 return track
             # Play failed — skip to next track instead of stopping the radio
             logger.warning("play_track: failed to play %s, skipping to next", track)
@@ -152,7 +176,7 @@ class PlaybackEngine:
         async with self._lock_for(state):
             await asyncio.to_thread(self.audio.stop)
             self._reset_runtime_state(state)
-            await asyncio.to_thread(save_queue, state, self.root_dir)
+            await self._save_queue(state, immediate=True)
 
     async def jump_to_track(self, state: PlaybackState, index: int) -> str | None:
         async with self._lock_for(state):
@@ -170,7 +194,7 @@ class PlaybackEngine:
             clear_queue(state)
             await asyncio.to_thread(self.audio.stop)
             self._reset_runtime_state(state)
-            await asyncio.to_thread(save_queue, state, self.root_dir)
+            await self._save_queue(state, immediate=True)
 
     def _build_track_path(self, col: Collection, track: str) -> Path:
         """Build the full filesystem path for a track, handling archive_path prefix dedup."""
@@ -184,6 +208,8 @@ class PlaybackEngine:
         query_lower = query.lower()
         results: list[str] = []
         col = get_collection(state.collection_mode)
+        metadata_probes = 0
+        probe_cap_logged = False
         for path in state.tracks:
             normalized_path = path.replace("\\", "/")
             filename = normalized_path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ")
@@ -204,6 +230,17 @@ class PlaybackEngine:
 
             if not col:
                 continue
+            if metadata_probes >= MAX_METADATA_PROBES:
+                if not probe_cap_logged:
+                    logger.info(
+                        "search: metadata probe cap (%d) reached for query %r; "
+                        "continuing with path-only matching",
+                        MAX_METADATA_PROBES,
+                        query,
+                    )
+                    probe_cap_logged = True
+                continue
+            metadata_probes += 1
             full_path = self._build_track_path(col, path)
             meta = extract_metadata(str(full_path), state.collection_mode)
             name = meta.get("NAME", meta.get("name", ""))

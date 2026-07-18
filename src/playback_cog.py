@@ -159,6 +159,8 @@ class PlaybackCog(commands.Cog):
         if message.lower().startswith(("failed", "all tracks stuck")):
             self.bot.increment_metric("playback_failures")
         guild_id = ctx.guild.id if ctx.guild else None
+        if guild_id is not None:
+            self.bot.cancel_sleep_task(guild_id)
         try:
             await self.bot.engine.stop(state)
         except Exception as exc:
@@ -356,6 +358,7 @@ class PlaybackCog(commands.Cog):
         if not await self._can_control_audio(ctx):
             return
         state = self.bot.get_state(ctx.guild.id)
+        self.bot.cancel_sleep_task(ctx.guild.id)
         await self.bot.engine.stop(state)
         self.bot.stop_stream(ctx.guild.id)
         await self.bot.cancel_monitor(ctx.guild.id)
@@ -462,16 +465,30 @@ class PlaybackCog(commands.Cog):
     async def sleep(self, ctx: commands.Context, minutes: int = 5) -> None:
         if not ctx.guild:
             return
-        if minutes <= 0:
-            return await ctx.send("Sleep time must be greater than zero minutes.")
+        if minutes < 0:
+            return await ctx.send("Sleep time must be zero (cancel) or greater.")
         if not await self._can_control_audio(ctx, require_owner=True):
             return
+        if minutes == 0:
+            if self.bot.cancel_sleep_task(ctx.guild.id):
+                return await ctx.send("Sleep timer cancelled.")
+            return await ctx.send("No sleep timer set.")
         session = self.bot.playback_session(ctx.guild.id)
         await ctx.send(f"Stopping in {minutes} minutes...")
-        await asyncio.sleep(minutes * 60)
-        if self.bot.playback_session(ctx.guild.id) != session:
-            return
-        await self.stop(ctx)
+
+        async def _sleep_then_stop() -> None:
+            task = asyncio.current_task()
+            try:
+                await asyncio.sleep(minutes * 60)
+                if self.bot.playback_session(ctx.guild.id) != session:
+                    return
+                # self.stop is a Command object under discord.py — call its
+                # callback explicitly (plain self.stop(ctx) would TypeError).
+                await self.stop.callback(self, ctx)
+            finally:
+                self.bot.clear_sleep_task(ctx.guild.id, task)
+
+        self.bot.register_sleep_task(ctx.guild.id, asyncio.create_task(_sleep_then_stop()))
 
     @commands.command()
     async def export(self, ctx: commands.Context) -> None:

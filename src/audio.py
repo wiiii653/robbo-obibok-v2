@@ -532,21 +532,18 @@ def disable_repeat() -> None:
         if status == "off":
             logger.info("Audacious playlist repeat already off")
             return
-        if status == "on":
-            if (
-                subprocess.run(
-                    ["audtool", "playlist-repeat-toggle"], capture_output=True
-                ).returncode
-                == 0
-            ):
-                logger.info("Audacious playlist repeat disabled")
-                return
-        # Status unknown — try toggling
+        if status != "on":
+            # Never toggle blindly — if repeat was actually off, a blind
+            # toggle would turn it ON and loop finished GME tracks.
+            logger.warning(
+                "Audacious playlist repeat status unknown (%r); leaving it unchanged", status
+            )
+            return
         if (
             subprocess.run(["audtool", "playlist-repeat-toggle"], capture_output=True).returncode
             == 0
         ):
-            logger.info("Audacious playlist repeat toggled (assumed off now)")
+            logger.info("Audacious playlist repeat disabled")
             return
     except OSError:
         pass

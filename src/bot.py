@@ -48,6 +48,7 @@ class ObibokBot(commands.Bot):
         self._states: dict[int, PlaybackState] = {}
         self._np_messages: dict[int, dict] = {}
         self._monitor_tasks: dict[int, asyncio.Task] = {}
+        self._sleep_tasks: dict[int, asyncio.Task] = {}
         self.streams = VoiceStreamManager(sink_name, self._on_stream_end_callback)
         self._background_tasks: list[asyncio.Task] = []
         self._playback_sessions: dict[int, int] = {}
@@ -158,6 +159,23 @@ class ObibokBot(commands.Bot):
     def clear_monitor_task(self, guild_id: int, task: asyncio.Task | None) -> None:
         if self._monitor_tasks.get(guild_id) is task:
             self._monitor_tasks.pop(guild_id, None)
+
+    def cancel_sleep_task(self, guild_id: int) -> bool:
+        """Cancel a pending sleep timer. Returns True if one was cancelled."""
+        task = self._sleep_tasks.pop(guild_id, None)
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+            return True
+        return False
+
+    def register_sleep_task(self, guild_id: int, task: asyncio.Task) -> None:
+        """Register a sleep timer, replacing any existing one for the guild."""
+        self.cancel_sleep_task(guild_id)
+        self._sleep_tasks[guild_id] = task
+
+    def clear_sleep_task(self, guild_id: int, task: asyncio.Task | None) -> None:
+        if self._sleep_tasks.get(guild_id) is task:
+            self._sleep_tasks.pop(guild_id, None)
 
     def begin_playback_session(self, guild_id: int) -> int:
         session = self._playback_sessions.get(guild_id, 0) + 1
@@ -290,11 +308,15 @@ class ObibokBot(commands.Bot):
                 logger.warning("Background task failed during shutdown: %s", exc)
         self._background_tasks.clear()
         self.streams.close()
+        sleep_tasks = list(self._sleep_tasks.values())
+        for task in sleep_tasks:
+            task.cancel()
+        self._sleep_tasks.clear()
         monitor_tasks = list(self._monitor_tasks.values())
         for task in monitor_tasks:
             task.cancel()
         self._monitor_tasks.clear()
-        await asyncio.gather(*monitor_tasks, return_exceptions=True)
+        await asyncio.gather(*sleep_tasks, *monitor_tasks, return_exceptions=True)
         await super().close()
 
     async def _health_watchdog(self) -> None:

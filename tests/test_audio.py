@@ -520,3 +520,21 @@ class TestDisableRepeat:
         mock_run.return_value = MagicMock(returncode=0, stdout="off\n")
         disable_repeat()
         assert mock_run.call_count == 1  # only status check, no toggle
+
+    @patch("src.audio.subprocess.run")
+    def test_disable_repeat_never_toggles_on_unknown_status(self, mock_run):
+        """Unknown status must not trigger a blind toggle — if repeat was
+        actually off, toggling would turn it ON and loop finished tracks."""
+        mock_run.return_value = MagicMock(returncode=1, stdout="")  # status unreadable
+        disable_repeat()
+        assert mock_run.call_count == 1  # only status check, no toggle
+
+    @patch("src.audio.subprocess.run")
+    def test_disable_repeat_warns_when_toggle_fails(self, mock_run, caplog):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="on\n"),  # status check
+            MagicMock(returncode=1, stdout=""),  # toggle fails
+        ]
+        disable_repeat()
+        assert mock_run.call_count == 2
+        assert "Could not disable Audacious playlist repeat" in caplog.text
