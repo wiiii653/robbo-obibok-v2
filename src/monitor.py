@@ -32,9 +32,9 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
             return min(song_len, CONSOLE_TIMEOUT)
         return CONSOLE_TIMEOUT
     if song_len <= 0:
-        return CONSOLE_TIMEOUT
+        return DEFAULT_TIMEOUT
     if 10 < song_len < 36000:
-        return song_len + 1
+        return min(song_len + 1, DEFAULT_TIMEOUT)
     return DEFAULT_TIMEOUT
 
 
@@ -174,16 +174,11 @@ class TrackMonitor:
             if self._not_playing_since is None:
                 self._not_playing_since = now
             else:
-                # Check if audacious still has a track loaded (v1 compat)
-                # For console formats the file stays loaded after end — ignore
-                if is_console_format(state.current_track):
-                    still_loaded = False
-                elif hasattr(self.audio, "async_current_song"):
-                    still_loaded = bool(await self.audio.async_current_song())
-                elif hasattr(self.audio, "current_song"):
-                    still_loaded = bool(self.audio.current_song())
-                else:
-                    still_loaded = bool(self.audio.song_length())
+                # Audacious keeps the finished track loaded in its 1-entry
+                # playlist regardless of format, so still_loaded is always
+                # True after playback stops. We don't gate on it — the grace
+                # period is enough to avoid false triggers from brief pauses.
+                still_loaded = False
                 grace = 2 if is_console_format(state.current_track) else 1
                 should_advance, self._not_playing_since = should_advance_after_stop(
                     self._not_playing_since, now, grace, still_loaded=still_loaded
