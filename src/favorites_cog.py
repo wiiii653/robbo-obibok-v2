@@ -50,10 +50,15 @@ class FavoritesCog(commands.Cog):
         if playback_cog:
             playback_cog._set_queue(state, queued, shuffle=True)
         try:
-            if ctx.voice_client:
-                await ctx.voice_client.disconnect()
-            await ctx.author.voice.channel.connect()
-            state.voice_channel_id = ctx.author.voice.channel.id
+            vc = ctx.voice_client
+            target_channel = ctx.author.voice.channel
+            # Don't disconnect/reconnect if already on the right channel —
+            # force-disconnecting kills the voice WebSocket session (4006)
+            if not vc or vc.channel.id != target_channel.id:
+                if vc:
+                    await vc.disconnect()
+                await target_channel.connect()
+            state.voice_channel_id = target_channel.id
             await ctx.send(success_message)
             if playback_cog:
                 await playback_cog._play_and_monitor(ctx, state)

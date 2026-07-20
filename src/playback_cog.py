@@ -184,9 +184,13 @@ class PlaybackCog(commands.Cog):
         failure_prefix: str,
     ) -> None:
         try:
-            if ctx.voice_client:
-                await ctx.voice_client.disconnect()
-            vc = await voice_channel.connect()
+            vc = ctx.voice_client
+            # Don't disconnect/reconnect if already on the right channel —
+            # force-disconnecting kills the voice WebSocket session (4006)
+            if not vc or vc.channel.id != voice_channel.id:
+                if vc:
+                    await vc.disconnect()
+                vc = await voice_channel.connect()
             if isinstance(ctx, PlaybackCtx):
                 ctx.voice_client = vc
             state.voice_channel_id = voice_channel.id
