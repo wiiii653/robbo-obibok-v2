@@ -132,6 +132,11 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     if not ext:
         return None
 
+    # YM is stored as converted OGG under archiwum/ym_ogg/ — resolve by path
+    # before extension, otherwise .ogg would match modarchive.
+    if "/ym_ogg/" in filepath.replace("\\", "/"):
+        return "ym"
+
     # Unambiguous extensions
     extension_map = {
         "sid": "hvsc",
