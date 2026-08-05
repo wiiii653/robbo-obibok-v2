@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.config import AppConfig, AudioConfig, AutoConfig, PlaybackConfig, load_config
@@ -19,7 +21,10 @@ class TestAppConfig:
 
     def test_root_dir(self):
         config = AppConfig()
-        assert "robbo-obibok-v2" in config.root_dir
+        # root_dir = katalog nadrzędny modułu config — przy instalacji wheel
+        # wskazuje site-packages, przy źródłowej/editable — katalog repo.
+        # Liczy się to, że wskazuje istniejący katalog, nie konkretna nazwa.
+        assert Path(config.root_dir).is_dir()
 
 
 class TestLoadConfig:
