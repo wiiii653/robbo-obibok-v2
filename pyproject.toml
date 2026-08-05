@@ -23,6 +23,9 @@ dev = [
     "ruff>=0.11,<1",
     "build>=1,<2",
     "pip-audit>=2,<3",
+    # Python 3.11 venv (ensurepip) wnosi setuptools 79.0.1 (PYSEC-2026-3447);
+    # pin wymusza podniesienie do wersji załatanej — inaczej pip-audit pada.
+    "setuptools>=83.0.0",
 ]
 
 [project.scripts]
