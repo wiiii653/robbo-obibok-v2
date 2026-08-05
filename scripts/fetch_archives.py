@@ -287,16 +287,17 @@ def fetch_modarchive(dry: bool, check_only: bool, dest_override: Path | None) ->
 
 
 def fetch_tiny(dry: bool, check_only: bool, dest_override: Path | None) -> int:
-    """Tiny — demoscene modules via fetch_mods.py z pouet-demozoo-mods."""
-    script = Path.home() / "pouet-demozoo-mods" / "fetch_mods.py"
-    if not script.exists():
-        log("  !! brak ~/pouet-demozoo-mods/fetch_mods.py")
+    """Tiny — demoscene modules via fetch_pouet_mods.py (lokalna kopia w scripts/)."""
+    script = SCRIPT_DIR / "fetch_pouet_mods.py"
+    manifest = SCRIPT_DIR / "pouet_manifest.json"
+    if not script.exists() or not manifest.exists():
+        log("  !! brak scripts/fetch_pouet_mods.py lub pouet_manifest.json")
         return 1
-    log("  Tiny: wywołuję fetch_mods.py (manifest pouet-demozoo):")
+    log("  Tiny: wywołuję fetch_pouet_mods.py (manifest pouet-demozoo):")
     if dry or check_only:
         log("    (dry-run/check — bez pobierania)")
         return 0
-    cmd = [sys.executable, str(script), "--manifest", str(script.parent / "manifest.json")]
+    cmd = [sys.executable, str(script), "--manifest", str(manifest)]
     if dest_override:
         cmd += ["--dest", str(dest_override)]
     res = subprocess.run(cmd, timeout=60 * 60 * 2)

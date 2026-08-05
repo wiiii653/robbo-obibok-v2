@@ -13,7 +13,7 @@ Jeden downloader dla wszystkich kolekcji Robbo v2. Używa tylko stdlib (urllib)
 | **ym** (Atari ST YM) | `ay.strangled.net` — YM_Archive_v5.7z, YM.7z, VtxYmEtc.7z, faveym.7z | ~6.5 MB | Modland YM pobierany osobno (FTP) |
 | **kgen** (keygen music) | GitHub `6512345/keygenmusic` (codeload zip) | ~430 MB | strip 1 poziomu (root `keygenmusic-main/`) |
 | **modarchive** | `modarchive.textfiles.com` snapshot | GB! | deleguje do `download_modarchive_bulk.py` |
-| **tiny** (demoscene) | `~/pouet-demozoo-mods/fetch_mods.py` | ~35 MB | deleguje do manifestu pouet-demozoo |
+| **tiny** (demoscene) | `scripts/fetch_pouet_mods.py` + `pouet_manifest.json` | ~35 MB | manifest 15 artystów + 1 direct, 130 plików |
 
 ### Użycie
 

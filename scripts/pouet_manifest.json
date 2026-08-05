@@ -1,0 +1,222 @@
+{
+  "modland_base": "ftp://ftp.modland.com/pub/modules",
+  "artists": [
+    {
+      "name": "4-Mat",
+      "files": [
+        "china-eyes.mod",
+        "close to the edge.mod",
+        "dream in blue water.mod",
+        "eclipse.mod",
+        "her-song.mod",
+        "mission-impossible.mod",
+        "pinball dreams 2 - stall turn.mod"
+      ]
+    },
+    {
+      "name": "Dubmood",
+      "files": [
+        "3d galax.xm",
+        "4everblue morninsky.xm",
+        "comeallye.mub(remix).xm",
+        "cybernostra weekend.xm"
+      ]
+    },
+    {
+      "name": "Jeroen_Tel",
+      "files": [
+        "brave but beasty.mod",
+        "cry for help.mod",
+        "film type.mod",
+        "funky bassy slappy.mod",
+        "get down mega right.mod",
+        "get onto you.mod",
+        "harmonic hardihood.mod",
+        "hit me.mod",
+        "house in a box.mod"
+      ],
+      "remote_name": "Jeroen Tel"
+    },
+    {
+      "name": "Jester",
+      "files": [
+        "Elysium.mod"
+      ]
+    },
+    {
+      "name": "Jogeir_Liljedahl",
+      "files": [
+        "00optimystique.mod",
+        "1 step further.mod",
+        "a magic touch.mod",
+        "amore.mod",
+        "attributed horror.mod"
+      ]
+    },
+    {
+      "name": "Lizardking",
+      "files": [
+        "desert dawn.mod",
+        "elimination.mod",
+        "space gravitation.mod",
+        "trans atlantic.mod",
+        "underworld dreams.mod",
+        "world of insanity.mod"
+      ]
+    },
+    {
+      "name": "Moby",
+      "files": [
+        "2 good 2 b true.mod",
+        "88, funky avenue.mod",
+        "angel from hell.mod",
+        "antarctica.mod",
+        "arkham asylum.mod",
+        "bomb the bass.mod",
+        "bonus track.mod",
+        "brainies-intro.mod",
+        "deep space.mod",
+        "last-knight.mod",
+        "rain.mod",
+        "rainynight.mod",
+        "the knight is back.mod"
+      ]
+    },
+    {
+      "name": "Necros",
+      "files": [
+        "distant lullaby.xm"
+      ]
+    },
+    {
+      "name": "Necros",
+      "subdir": "ScreamTracker3",
+      "files": [
+        "15 minute shit.s3m",
+        "andante.s3m",
+        "arcadia.s3m",
+        "ascent of the cloud eagle.s3m",
+        "babylon.s3m",
+        "bugs in my head.s3m",
+        "collage.s3m",
+        "distance.s3m",
+        "eden.s3m",
+        "energia.s3m",
+        "gateway.s3m",
+        "greed - escape.s3m",
+        "greed - particle control.s3m",
+        "helpless automaton.s3m",
+        "mechanism eight.s3m",
+        "metroplex.s3m",
+        "midnight.s3m",
+        "motion blur.s3m",
+        "point of departure.s3m",
+        "possession.s3m",
+        "realization ii.s3m",
+        "revelation.s3m",
+        "skyscraper (remix).s3m",
+        "taste of blue.s3m",
+        "the crossing.s3m",
+        "the grey note.s3m",
+        "wired96r.s3m"
+      ]
+    },
+    {
+      "name": "Purple_Motion",
+      "files": [
+        "Unreal 2 - 2ND_PM.s3m",
+        "asm 94-invitation.mod",
+        "shadowrun.mod",
+        "soul-o-matic.mod",
+        "sundance.mod"
+      ],
+      "remote_name": "Purple Motion"
+    },
+    {
+      "name": "Purple_Motion",
+      "subdir": "ScreamTracker3",
+      "files": [
+        "aquaphobia - 1993.s3m",
+        "astraying voyages.s3m",
+        "cool city - volume 1.2.s3m",
+        "day of the lollipop.s3m",
+        "escape from pori.s3m",
+        "global motion vol 1.s3m",
+        "panic.s3m",
+        "purple sky ii.s3m",
+        "real cybomen v2.1.s3m",
+        "satellite one.s3m",
+        "scenial.s3m",
+        "seaside hotel.s3m",
+        "skyrider.s3m",
+        "starshine.s3m",
+        "the probe (maintheme).s3m",
+        "when the heavens fall.s3m"
+      ],
+      "remote_name": "Purple Motion"
+    },
+    {
+      "name": "Radix",
+      "files": [
+        "beyond.mod",
+        "bomb da bass.mod",
+        "captured dreams.2.mod",
+        "convulsion to obey.mod"
+      ]
+    },
+    {
+      "name": "Skaven",
+      "subdir": "Impulsetracker",
+      "files": [
+        "beyond the network.it",
+        "bookworm.it",
+        "boonka.it",
+        "cannon angel.it",
+        "codename silver.it",
+        "deep in her eyes (remake).it",
+        "hamsterball (gold edition).it",
+        "hap hazard.it",
+        "razorback.it",
+        "the goblin returns.it",
+        "the occasion.it",
+        "unreal tournament - razorback - unreal mix.it"
+      ]
+    },
+    {
+      "name": "Skaven",
+      "subdir": "ScreamTracker3",
+      "files": [
+        "2nd reality.s3m",
+        "amazonas.s3m",
+        "captured sun.s3m",
+        "catch that goblin!!.s3m",
+        "crystal dragon.s3m",
+        "data jack.s3m",
+        "deep in her eyes.s3m",
+        "he has no face.s3m",
+        "ice frontier.s3m",
+        "mangrove.s3m",
+        "mercury rain.s3m",
+        "okta-xy-geen.s3m",
+        "starship troopers.s3m",
+        "the night of the cats (remix).s3m",
+        "the white tiger.s3m",
+        "war in the middle earth.s3m"
+      ]
+    },
+    {
+      "name": "Vogue",
+      "files": [
+        "crystal orbit.mod",
+        "crystal starlight.mod",
+        "soft brilliance.mod"
+      ]
+    }
+  ],
+  "direct": [
+    {
+      "url": "https://archive.org/download/dubmood-all-xm-modules/E1M777.xm",
+      "dest": "MBR_Dubmood/E1M777.xm"
+    }
+  ]
+}
