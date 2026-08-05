@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from .cog_shared import require_control
 from .collection_loader import flip_collection, get_collection, load_raw_paths
 from .discord_compat import commands, discord
 from .embeds import status_embed
@@ -97,6 +98,8 @@ class CollectionCog(commands.Cog):
 
     async def _switch(self, ctx: commands.Context, collection_id: str) -> None:
         if not ctx.guild:
+            return
+        if not await require_control(self.bot, ctx):
             return
         state = self.bot.get_state(ctx.guild.id)
         active = state.is_playing or bool(ctx.voice_client)

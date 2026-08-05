@@ -8,7 +8,7 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from .cog_shared import FAVORITE_EMOJI
+from .cog_shared import FAVORITE_EMOJI, require_control
 from .collection_loader import resolve_collection_for_saved_track
 from .discord_compat import commands, discord
 from .favorites import PlaylistLibrary
@@ -173,6 +173,8 @@ class FavoritesCog(commands.Cog):
     async def favplay(self, ctx: commands.Context, *, number: str = "") -> None:
         if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("Join a voice channel first!")
+        if not await require_control(self.bot, ctx):
+            return
         tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
         if not tracks:
             return await ctx.send(
@@ -263,6 +265,8 @@ class FavoritesCog(commands.Cog):
             return await ctx.send("\n".join(lines))
         if not ctx.guild or not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.send("Join a voice channel first!")
+        if not await require_control(self.bot, ctx):
+            return
         lib = PlaylistLibrary(self.bot.root_dir)
         playlist = lib.load(name)
         if not playlist:
