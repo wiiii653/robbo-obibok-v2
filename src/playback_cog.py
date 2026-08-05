@@ -9,7 +9,7 @@ import random
 import time
 from typing import TYPE_CHECKING
 
-from .cog_shared import FAVORITE_EMOJI, PlaybackCtx
+from .cog_shared import FAVORITE_EMOJI, PlaybackCtx, require_control
 from .collection_loader import get_collection, load_raw_paths
 from .discord_compat import commands, discord
 from .embeds import now_playing_embed, queue_embed
@@ -282,6 +282,8 @@ class PlaybackCog(commands.Cog):
     async def play(self, ctx: commands.Context, *, query: str = "") -> None:
         if not ctx.guild:
             return
+        if not await require_control(self.bot, ctx):
+            return
         voice_channel = await self._ensure_voice(ctx)
         if not voice_channel:
             return
@@ -359,6 +361,8 @@ class PlaybackCog(commands.Cog):
     async def stop(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
+        if not await require_control(self.bot, ctx):
+            return
         if not await self._can_control_audio(ctx):
             return
         state = self.bot.get_state(ctx.guild.id)
@@ -374,6 +378,8 @@ class PlaybackCog(commands.Cog):
     @commands.command(aliases=["next", "nt"])
     async def skip(self, ctx: commands.Context) -> None:
         if not ctx.guild:
+            return
+        if not await require_control(self.bot, ctx):
             return
         if not await self._can_control_audio(ctx, require_owner=True):
             return
@@ -420,6 +426,8 @@ class PlaybackCog(commands.Cog):
     async def jump(self, ctx: commands.Context, index: int) -> None:
         if not ctx.guild:
             return
+        if not await require_control(self.bot, ctx):
+            return
         if not await self._can_control_audio(ctx, require_owner=True):
             return
         state = self.bot.get_state(ctx.guild.id)
@@ -436,12 +444,16 @@ class PlaybackCog(commands.Cog):
     async def loop(self, ctx: commands.Context) -> None:
         if not ctx.guild:
             return
+        if not await require_control(self.bot, ctx):
+            return
         state = self.bot.get_state(ctx.guild.id)
         looping = self.bot.engine.toggle_loop(state)
         await ctx.send(f"Loop: {'ON' if looping else 'OFF'}")
 
     @commands.command()
     async def volume(self, ctx: commands.Context, level: int = -1) -> None:
+        if not await require_control(self.bot, ctx):
+            return
         if not await self._can_control_audio(ctx):
             return
         if level < 0:
@@ -453,6 +465,8 @@ class PlaybackCog(commands.Cog):
     @commands.command()
     async def clear(self, ctx: commands.Context) -> None:
         if not ctx.guild:
+            return
+        if not await require_control(self.bot, ctx):
             return
         if not await self._can_control_audio(ctx):
             return
@@ -471,6 +485,8 @@ class PlaybackCog(commands.Cog):
             return
         if minutes < 0:
             return await ctx.send("Sleep time must be zero (cancel) or greater.")
+        if not await require_control(self.bot, ctx):
+            return
         if not await self._can_control_audio(ctx, require_owner=True):
             return
         if minutes == 0:
