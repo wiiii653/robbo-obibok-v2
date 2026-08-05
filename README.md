@@ -91,23 +91,48 @@ React with **⭐ (star)** to a Now Playing embed to save the track to your favor
 
 ## Collections
 
-| Collection | Format | Tracks | Source |
-|------------|--------|--------|--------|
+| Collection | Format | Tracks (lokalnie) | Source |
+|------------|--------|-------------------|--------|
 | **ASMA** | `.sap` | 6 335 | Local `archiwum/asma/` |
-| **HVSC** | `.sid` | 60 811 | Local `archiwum/hvsc/C64Music/` |
-| **AY** | `.ay` | 4 550 | Local `archiwum/ay/` |
-| **YM** | `.ym` | 6 919 | Local `archiwum/ym/` |
-| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 225 255 | Local `archiwum/modarchive/` |
-| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | ~550 | Local `archiwum/tiny/` |
-| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 4 835 | Local `archiwum/kgen/` |
+| **HVSC** | `.sid` | 60 971 | Local `archiwum/hvsc/C64Music/` |
+| **AY** | `.ay` | 43 480 | Local `archiwum/ay/` |
+| **YM** | `.ym` | 7 427 | Local `archiwum/ym/` |
+| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 79 408 | Local `archiwum/modarchive/` |
+| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 548 | Local `archiwum/tiny/` |
+| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 5 546 | Local `archiwum/kgen/` |
 
 All collections are served from disk.
+
+## Downloading archives
+
+All archives can be fetched and updated with one script:
+
+```bash
+./venv/bin/python3 scripts/fetch_archives.py all --check   # check only (no downloads)
+./venv/bin/python3 scripts/fetch_archives.py hvsc          # single archive
+./venv/bin/python3 scripts/fetch_archives.py all           # everything (ModArchive = GB!)
+```
+
+See `scripts/README.md` for sources and details (HVSC mirror, ASMA zip, AY/YM from
+ay.strangled.net, KGen GitHub mirror, Tiny pouet-demozoo manifest).
 
 ## Quick Start
 
 Supported Python versions: **3.11+**.
 
 Audacious requirement: this bot is validated against **Audacious 4.6.1** and checks that version at startup.
+
+### The lazy path — one script
+
+```bash
+git clone git@github.com:wiiii653/robbo-obibok-v2.git
+cd robbo-obibok-v2
+./install.sh                # deps systemowe + venv + token + systemd
+./install.sh --archives     # (opcjonalnie) ściąga archiwa hvsc, asma, ay, ym, tiny, kgen
+```
+
+`install.sh` detects the distro (apt/dnf/pacman), asks for your Discord bot token,
+installs the systemd service and optionally downloads the music archives.
 
 ### Ubuntu / Debian
 
