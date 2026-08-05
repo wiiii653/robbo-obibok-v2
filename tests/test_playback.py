@@ -198,6 +198,35 @@ class TestPlaybackEngine:
         assert save_mock.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_queue_save_first_save_on_fresh_clock(self, tmp_path, monkeypatch):
+        """First save must not be debounced when monotonic() is small.
+
+        GitHub CI runners are freshly provisioned VMs — time.monotonic() is
+        < QUEUE_SAVE_MIN_INTERVAL at job start. The old sentinel default of
+        0.0 treated "never saved" as "saved at time 0", so the first save was
+        wrongly debounced (3 tests failed on CI only).
+        """
+        from src import playback as playback_module
+
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(guild_id=123, queue=["a.sap"], position=0)
+        save_mock = MagicMock(return_value=True)
+        monkeypatch.setattr("src.playback.save_queue", save_mock)
+        monkeypatch.setattr("src.playback.time.monotonic", lambda: 5.0)
+
+        await engine._save_queue(state)
+        assert save_mock.call_count == 1
+
+        # Still inside the window -> debounced
+        await engine._save_queue(state)
+        assert save_mock.call_count == 1
+
+        # Past the window -> saves again
+        engine._last_queue_save[123] -= playback_module.QUEUE_SAVE_MIN_INTERVAL + 1
+        await engine._save_queue(state)
+        assert save_mock.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_stop_saves_immediately_after_recent_save(self, tmp_path, monkeypatch):
         """stop() must persist even right after a debounced per-track save."""
         engine = self._make_engine(tmp_path)

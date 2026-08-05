@@ -54,10 +54,8 @@ class PlaybackEngine:
         if not state.guild_id:
             return
         now = time.monotonic()
-        if (
-            not immediate
-            and now - self._last_queue_save.get(state.guild_id, 0.0) < QUEUE_SAVE_MIN_INTERVAL
-        ):
+        last = self._last_queue_save.get(state.guild_id)
+        if not immediate and last is not None and now - last < QUEUE_SAVE_MIN_INTERVAL:
             return
         self._last_queue_save[state.guild_id] = now
         await asyncio.to_thread(save_queue, state, self.root_dir)
