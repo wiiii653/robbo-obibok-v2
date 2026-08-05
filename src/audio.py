@@ -148,7 +148,10 @@ def kill_player() -> None:
             pass
 
 
-UNSUPPORTED_SAP_TYPES = {"D", "E"}
+# Od 2026-08-05 SAP TYPE D/E gra natywny plugin sap.so (ASAP 8.0.0) —
+# GME/console.so nie jest już jedynym dekoderem SAP. Wszystkie typy
+# (A-E, S, dual-POKEY, stereo) są wspierane, więc nic nie odrzucamy z góry.
+UNSUPPORTED_SAP_TYPES: set[str] = set()
 
 
 def _get_sap_type(filepath: str) -> str | None:
@@ -305,9 +308,10 @@ def _get_sid_songs_count(filepath: str) -> int:
 
 
 def _is_sap_supported(filepath: str) -> tuple[bool, str]:
-    """Check if an SAP file has a TYPE that GME's Console plugin can play.
+    """Check if an SAP file can be played.
 
-    Returns (supported: bool, reason: str).
+    Since 2026-08-05 the native sap.so plugin (ASAP) plays every SAP type,
+    so this gate no longer refuses anything (kept for API compatibility).
     """
     if not filepath.lower().endswith(".sap"):
         return True, ""
