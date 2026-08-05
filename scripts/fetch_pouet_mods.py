@@ -128,7 +128,10 @@ def download_ftp(remote: str, dest: Path, logger=print, retries: int = 3) -> boo
                 got["bytes"] += len(data)
 
             with os.fdopen(fd, "wb") as fh:
-                ftp.retrbinary(f"RETR {remote}", lambda d: (fh.write(d), got.__setitem__("bytes", got["bytes"] + len(d)))[0])
+                ftp.retrbinary(
+                    f"RETR {remote}",
+                    lambda d: (fh.write(d), got.__setitem__("bytes", got["bytes"] + len(d)))[0],
+                )
             if size is not None and got["bytes"] != size:
                 raise IOError(f"rozmiar się nie zgadza: {got['bytes']} != {size}")
             if got["bytes"] == 0:
@@ -158,7 +161,12 @@ def download_http(url: str, dest: Path, logger=print, retries: int = 3) -> bool:
     for attempt in range(1, retries + 1):
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"})
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
+                },
+            )
             with urllib.request.urlopen(req, timeout=60) as resp:
                 data = resp.read()
             if not data:
@@ -189,7 +197,9 @@ def already_ok(dest: Path, remote_size: int | None) -> bool:
 def build_manifest(root: Path) -> dict:
     """Zbuduj manifest z istniejącej struktury katalogów."""
     manifest = {"modland_base": f"ftp://{MODLAND_HOST}{MODLAND_BASE}", "artists": [], "direct": []}
-    for artist_dir in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")):
+    for artist_dir in sorted(
+        p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")
+    ):
         files = []
         for f in sorted(artist_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in TRACK_EXTS:
@@ -197,8 +207,14 @@ def build_manifest(root: Path) -> dict:
         if files:
             manifest["artists"].append({"name": artist_dir.name, "files": files})
         # podkatalogi formatowe (np. Necros/ScreamTracker3)
-        for sub in sorted(p for p in artist_dir.iterdir() if p.is_dir() and not p.name.startswith(".")):
-            sub_files = [decode_name(f.name) for f in sorted(sub.iterdir()) if f.is_file() and f.suffix.lower() in TRACK_EXTS]
+        for sub in sorted(
+            p for p in artist_dir.iterdir() if p.is_dir() and not p.name.startswith(".")
+        ):
+            sub_files = [
+                decode_name(f.name)
+                for f in sorted(sub.iterdir())
+                if f.is_file() and f.suffix.lower() in TRACK_EXTS
+            ]
             if sub_files:
                 manifest["artists"].append(
                     {"name": artist_dir.name, "subdir": sub.name, "files": sub_files}
@@ -217,7 +233,9 @@ def fill_formats(manifest: dict) -> None:
                 a["format"] = None  # mieszane — wymaga ręcznej decyzji
 
 
-def run_manifest(manifest: dict, dest_root: Path, jobs: int, dry: bool, check_only: bool, logger=print) -> int:
+def run_manifest(
+    manifest: dict, dest_root: Path, jobs: int, dry: bool, check_only: bool, logger=print
+) -> int:
     fill_formats(manifest)
     base = manifest.get("modland_base", f"ftp://{MODLAND_HOST}{MODLAND_BASE}")
     # base może być "ftp://host/pub/modules" albo goły "/pub/modules"
@@ -327,12 +345,19 @@ def run_manifest(manifest: dict, dest_root: Path, jobs: int, dry: bool, check_on
 def main() -> int:
     ap = argparse.ArgumentParser(description="Downloader modułów demosceny (Modland FTP + HTTP).")
     ap.add_argument("--manifest", type=Path, help="ścieżka do manifestu JSON")
-    ap.add_argument("--build-manifest", nargs="?", const=".", type=Path, help="zbuduj manifest.json z katalogu")
+    ap.add_argument(
+        "--build-manifest", nargs="?", const=".", type=Path, help="zbuduj manifest.json z katalogu"
+    )
     ap.add_argument("--dest", type=Path, help="katalog docelowy (domyślnie katalog skryptu)")
     ap.add_argument("--check", action="store_true", help="tylko weryfikuj, nie pobieraj")
     ap.add_argument("--dry-run", action="store_true", help="pokaż plan, nic nie pobieraj")
     ap.add_argument("--jobs", type=int, default=1, help="równoległe pobierania (domyślnie 1)")
-    ap.add_argument("--out-manifest", type=Path, default=Path("manifest.json"), help="nazwa pliku manifestu przy --build-manifest")
+    ap.add_argument(
+        "--out-manifest",
+        type=Path,
+        default=Path("manifest.json"),
+        help="nazwa pliku manifestu przy --build-manifest",
+    )
     args = ap.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -342,7 +367,9 @@ def main() -> int:
         if str(args.build_manifest) == ".":
             root = Path(".").resolve()
         man = build_manifest(root)
-        man_path = args.out_manifest if args.out_manifest.is_absolute() else script_dir / args.out_manifest
+        man_path = (
+            args.out_manifest if args.out_manifest.is_absolute() else script_dir / args.out_manifest
+        )
         man_path.write_text(json.dumps(man, indent=2, ensure_ascii=False) + "\n")
         total = sum(len(a["files"]) for a in man["artists"])
         print(f"Manifest zapisany: {man_path} ({len(man['artists'])} artystów, {total} plików)")

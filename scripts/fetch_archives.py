@@ -36,9 +36,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-ARCHIVIUM = Path(
-    os.environ.get("ROBBO_ARCHIVIUM", str(PROJECT_ROOT / "archiwum"))
-)
+ARCHIVIUM = Path(os.environ.get("ROBBO_ARCHIVIUM", str(PROJECT_ROOT / "archiwum")))
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
 
 
@@ -137,6 +135,7 @@ def _strip_prefix(root: Path, strip: int) -> None:
 
 
 # ── definicje archiwów ────────────────────────────────────────────────
+
 
 def hvsc_plan() -> dict:
     """Najnowsza wersja HVSC z oficjalnego API + mirror (boswme.home.xs4all.nl nie żyje)."""
@@ -326,8 +325,9 @@ def build_index(name: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Pobieracz archiwów Robbo v2")
-    ap.add_argument("archive", nargs="?", default="all",
-                    help="hvsc|asma|ay|kgen|modarchive|tiny|all")
+    ap.add_argument(
+        "archive", nargs="?", default="all", help="hvsc|asma|ay|kgen|modarchive|tiny|all"
+    )
     ap.add_argument("--check", action="store_true", help="tylko sprawdź stan (API/rozmiary)")
     ap.add_argument("--dry-run", action="store_true", help="pokaż plan, nic nie pobieraj")
     ap.add_argument("--dest", type=Path, help="nadpisz katalog docelowy")
@@ -344,7 +344,9 @@ def main() -> int:
         log(f"\n=== {name} ===")
         try:
             rc |= FETCHERS[name](args.dry_run, args.check, args.dest)
-            if (args.build_index and not args.dry_run and not args.check) or (args.check and args.build_index):
+            if (args.build_index and not args.dry_run and not args.check) or (
+                args.check and args.build_index
+            ):
                 build_index(name)
         except Exception as exc:  # noqa: BLE001
             log(f"  !! BŁĄD {name}: {exc}")
