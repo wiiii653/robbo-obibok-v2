@@ -298,8 +298,9 @@ def fetch_tiny(dry: bool, check_only: bool, dest_override: Path | None) -> int:
         log("    (dry-run/check — bez pobierania)")
         return 0
     cmd = [sys.executable, str(script), "--manifest", str(manifest)]
-    if dest_override:
-        cmd += ["--dest", str(dest_override)]
+    # domyślny cel: archiwum/tiny/mods/pouet-demozoo (Tiny Music!)
+    dest = dest_override or (ARCHIVIUM / "tiny" / "mods" / "pouet-demozoo")
+    cmd += ["--dest", str(dest)]
     res = subprocess.run(cmd, timeout=60 * 60 * 2)
     return res.returncode
 
