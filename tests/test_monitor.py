@@ -8,6 +8,8 @@ import pytest
 
 from src.monitor import (
     CONSOLE_TIMEOUT,
+    CONSOLE_TIMEOUT_UNKNOWN,
+    DEFAULT_TIMEOUT,
     TrackMonitor,
     compute_timeout,
     is_console_format,
@@ -38,13 +40,27 @@ class TestComputeTimeout:
         assert compute_timeout(120) == 121
 
     def test_unknown_length(self):
-        assert compute_timeout(0) == CONSOLE_TIMEOUT
+        # fix bc355ef: nieznana długość standardu -> DEFAULT_TIMEOUT (600), nie 3600
+        assert compute_timeout(0) == DEFAULT_TIMEOUT
 
     def test_negative_length(self):
-        assert compute_timeout(-1) == CONSOLE_TIMEOUT
+        assert compute_timeout(-1) == DEFAULT_TIMEOUT
+
+    def test_unknown_length_console(self):
+        # console, nieznana długość -> CONSOLE_TIMEOUT_UNKNOWN (180)
+        assert compute_timeout(0, is_console_format=True) == CONSOLE_TIMEOUT_UNKNOWN
+
+    def test_negative_length_console(self):
+        assert compute_timeout(-1, is_console_format=True) == CONSOLE_TIMEOUT_UNKNOWN
 
     def test_console_length_uses_song_len_no_margin(self):
         assert compute_timeout(999, is_console_format=True) == 999
+
+    def test_console_length_capped_at_3600(self):
+        assert compute_timeout(5000, is_console_format=True) == CONSOLE_TIMEOUT
+
+    def test_known_length_capped_at_600(self):
+        assert compute_timeout(5000) == 600
 
 
 class TestMonitorHelpers:

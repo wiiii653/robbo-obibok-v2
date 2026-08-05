@@ -30,8 +30,9 @@ OUTDIR = os.environ.get(
 CONCURRENT = 8  # downloads at a time
 
 # Directories to download (from the main page)
-SNAPSHOT_DIRS = [chr(i) for i in range(ord("0"), ord("9") + 1)] + \
-                [chr(i) for i in range(ord("A"), ord("Z") + 1)]
+SNAPSHOT_DIRS = [chr(i) for i in range(ord("0"), ord("9") + 1)] + [
+    chr(i) for i in range(ord("A"), ord("Z") + 1)
+]
 
 # Yearly additions directories
 ADDITIONS_DIRS = [
@@ -99,6 +100,7 @@ async def download_snapshot_dir(session, letter):
         return
 
     import re
+
     zip_files = re.findall(r'href="([^"]+\.zip)"', html)
     if not zip_files:
         log.info("No zips in %s/", letter)
@@ -124,6 +126,7 @@ async def download_additions_dir(session, dirname):
         return
 
     import re
+
     # Find subdirectories (format dirs like MOD/, XM/, S3M/, etc.)
     subdirs = re.findall(r'href="([A-Z0-9]+)/"', html)
     if not subdirs:
