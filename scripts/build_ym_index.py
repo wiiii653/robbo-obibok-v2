@@ -16,15 +16,15 @@ from pathlib import Path
 from index_config import load_archive_root
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-ARCHIVIUM = load_archive_root(ROOT_DIR) / "ym_ogg"
+ARCHIVIUM = load_archive_root(ROOT_DIR) / "ym"
 OUTPUT = ROOT_DIR / "ym_cache_local.json"
 
 COLLECTIONS = {
-    "bulba_v5": "Bulba YM Archive v5 — Atari ST YM2149 (skonwertowane do OGG)",
-    "bulba_1997": "Bulba YM 1997-1998 — Atari ST YM music (skonwertowane do OGG)",
-    "faveym": "CyBeR Goth's YMs — curated selection (skonwertowane do OGG)",
-    "vtx_etc": "VTX + YM miscellaneous (skonwertowane do OGG)",
-    "modland": "Modland FTP — YM modules collection (skonwertowane do OGG)",
+    "bulba_v5": "Bulba YM Archive v5 — Atari ST YM2149 (natywnie przez ym.so)",
+    "bulba_1997": "Bulba YM 1997-1998 — Atari ST YM music (natywnie przez ym.so)",
+    "faveym": "CyBeR Goth's YMs — curated selection (natywnie przez ym.so)",
+    "vtx_etc": "VTX + YM miscellaneous (natywnie przez ym.so)",
+    "modland": "Modland FTP — YM modules collection (natywnie przez ym.so)",
 }
 
 
@@ -36,7 +36,8 @@ def main() -> None:
         if not d.exists():
             print(f"[SKIP] {subdir} — directory not found")
             continue
-        files = sorted(d.rglob("*.ogg"))
+        # Case-insensitive: collection has mixed .ym / .YM (bulba_1997, faveym, vtx_etc).
+        files = sorted(d.rglob("*.[yY][mM]"))
         count = 0
         for f in files:
             rel = str(f.relative_to(ARCHIVIUM))

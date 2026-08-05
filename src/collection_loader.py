@@ -132,8 +132,9 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     if not ext:
         return None
 
-    # YM is stored as converted OGG under archiwum/ym_ogg/ — resolve by path
-    # before extension, otherwise .ogg would match modarchive.
+    # Legacy (pre-2026-08-05): YM used to be converted OGG under archiwum/ym_ogg/.
+    # Keep resolving those paths so old favorites don't fall through to modarchive.
+    # New native .ym paths resolve via extension_map below.
     if "/ym_ogg/" in filepath.replace("\\", "/"):
         return "ym"
 

@@ -73,12 +73,12 @@ COLLECTIONS: dict[str, Collection] = {
     "ym": Collection(
         id="ym",
         name="Atari ST YM",
-        # Audacious 4.6.1 nie gra .ym: libgme nigdy nie miał YM2149, VTX czyta
-        # tylko kontener VTX, a GME wymaga AY z embedded kodem Z80. Jedyna
-        # pewna droga to ST-Sound (ym2wav) -> WAV -> OGG (ffmpeg). Kolekcja
-        # trzyma przekonwertowane .ogg (scripts/ym_to_ogg.py) w archiwum/ym_ogg/.
-        extensions=["ogg"],
-        archive_path="ym_ogg",
+        # Natywnie przez ym.so — input plugin audacious oparty o ST-Sound
+        # (projekt ~/ym-plugin). GME nigdy nie miał YM2149; plugin ładuje
+        # YM5/YM6 oraz warianty LHa wprost z bufora. Kolekcja trzyma
+        # oryginalne .ym w archiwum/ym/.
+        extensions=["ym"],
+        archive_path="ym",
         cache_file="ym_cache_local.json",
         volume=100,
         flip_tag="🎹YM",
