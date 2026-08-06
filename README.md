@@ -190,6 +190,33 @@ make format      # Ruff formatter
 RUN_INTEGRATION=1 venv/bin/pytest -m integration
 ```
 
+## Native input plugins (`plugins/`)
+
+The bot plays YM (Atari ST) and SAP (Atari) through custom native Audacious
+input plugins, vendored in this repo:
+
+| Plugin | Format | Decoder | Source |
+|--------|--------|---------|--------|
+| `plugins/ym` | `.ym` (YM5/YM6, LHa `-lh5-`) | ST-Sound | `ym.cc` + `vendor/stsound/StSoundLibrary/` |
+| `plugins/sap` | `.sap` (all types A–E, S, dual-POKEY) | ASAP 8.0.0 | `sap.cc` + `vendor/asap-8.0.0/` |
+
+Stock Audacious/GME cannot play YM at all (libgme never supported YM2149) and
+fails on SAP TYPE D/E (POKEY register range overlaps GME's 6502 stub); the
+native plugins close both gaps. Build them (requires `libaudcore-dev` +
+`libaudtag-dev`):
+
+```bash
+cd plugins/ym && ./build.sh     # → ym.so
+cd ../sap && ./build.sh         # → sap.so
+```
+
+The build script also compiles a standalone render harness (`test_stsound` /
+`test_asap`) for verification. Install by copying the `.so` into the Audacious
+input-plugin directory (e.g. `/usr/lib/x86_64-linux-gnu/audacious/Input/`) and
+restarting Audacious; the bot's health watchdog re-registers the plugin on the
+next restart. The build is reproducible — `build.sh` produces bit-identical
+`.so` files vs the installed production copies (verified by sha256).
+
 ## Invite the Bot
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
