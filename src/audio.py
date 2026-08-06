@@ -672,18 +672,16 @@ class AudioController:
     def total_sap_time(self) -> int | None:
         """Return total playback time for SAP, or None.
 
-        Uses max(header TIME sum, GME song_length) to prevent early
-        cut-off — some SAP files have header TIME shorter than actual
-        GME playback (e.g. Nekrofil: TIME=44s, GME=52s — header alone
-        would cut 8s early).
+        The native SAP plugin reports the total length (the sum of all
+        subsong durations), so it is used directly.  The header TIME sum is
+        retained as a cross-check to prevent early cut-off — some SAP files
+        have header TIME shorter than the reported playback length (e.g.
+        Nekrofil: TIME=44s, reported=52s — header alone would cut 8s early).
 
-        Trade-off: if GME over-reports (Crocketts Theme: TIME=200s,
-        GME=208-285s), max() preserves the inflated value, causing
-        some looping before wall-clock timeout fires. This is preferred
-        over early cut-off (which is silent data loss rather than
-        audible redundancy).
+        For single-song SAP, this has the same semantics as before.  The old
+        GME contract of per-subtune length multiplied by SONGS no longer
+        applies to native SAP playback.
 
-        For multi-song SAP: GME total = per_subsong × SONGS.
         Header total = sum of all TIME lines from SAP header.
         """
         fname = self._last_filepath or current_song_filename()
@@ -693,24 +691,18 @@ class AudioController:
         # 1) Header-derived total (sum of all TIME lines)
         header_total = _get_sap_time_seconds(fname)
 
-        # 2) GME-derived total (song_length × SONGS)
-        gme_per = song_length()
-        if gme_per <= 0:
-            gme_total = None
-        else:
-            songs = _get_sap_songs_count(fname)
-            if songs is not None and songs > 1:
-                gme_total = gme_per * songs
-            else:
-                gme_total = gme_per
+        # 2) Native SAP plugin reports the total length directly.
+        reported_total = song_length()
+        if reported_total <= 0:
+            reported_total = None
 
         # 3) Use max of both, falling back to whichever is available
-        if header_total is not None and gme_total is not None:
-            return max(header_total, gme_total)
+        if header_total is not None and reported_total is not None:
+            return max(header_total, reported_total)
         if header_total is not None:
             return header_total
-        if gme_total is not None:
-            return gme_total
+        if reported_total is not None:
+            return reported_total
         return None
 
     def sap_has_loop(self) -> bool:
