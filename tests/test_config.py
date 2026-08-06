@@ -28,6 +28,11 @@ class TestAppConfig:
 
 
 class TestLoadConfig:
+    def test_repo_config_playback_loop_is_intentional(self):
+        config = load_config()
+        # The operator config intentionally overrides the code default (loop=False).
+        assert config.playback.loop is True
+
     def test_load_default(self, tmp_path):
         config_path = tmp_path / "config.yaml"
         config_path.write_text("command_prefix: '?'\n")

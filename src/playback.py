@@ -58,8 +58,11 @@ class PlaybackEngine:
         last = self._last_queue_save.get(state.guild_id)
         if not immediate and last is not None and now - last < QUEUE_SAVE_MIN_INTERVAL:
             return
-        self._last_queue_save[state.guild_id] = now
-        await asyncio.to_thread(save_queue, state, self.root_dir)
+        ok = await asyncio.to_thread(save_queue, state, self.root_dir)
+        if ok:
+            self._last_queue_save[state.guild_id] = now
+        else:
+            logger.warning("queue save failed for guild %s", state.guild_id)
 
     def _lock_for(self, state: PlaybackState) -> asyncio.Lock:
         return self._guild_locks.setdefault(state.guild_id, asyncio.Lock())
