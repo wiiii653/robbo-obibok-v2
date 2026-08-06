@@ -75,6 +75,12 @@ class PlaybackEngine:
     async def start_radio(
         self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0
     ) -> str | None:
+        async with self._lock_for(state):
+            return await self._start_radio_unlocked(state, collection_id, user_id)
+
+    async def _start_radio_unlocked(
+        self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0
+    ) -> str | None:
         if collection_id:
             state.collection_mode = collection_id
         paths = await asyncio.to_thread(load_raw_paths, state.collection_mode, self.root_dir)
@@ -105,6 +111,15 @@ class PlaybackEngine:
         if track:
             await self._save_queue(state, immediate=True)
         return track
+
+    async def start_radio_and_play(
+        self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0
+    ) -> str | None:
+        async with self._lock_for(state):
+            track = await self._start_radio_unlocked(state, collection_id, user_id)
+            if not track:
+                return None
+            return await self._play_track_unlocked(state)
 
     async def play_track(self, state: PlaybackState) -> str | None:
         async with self._lock_for(state):

@@ -613,11 +613,9 @@ class PlaybackCog(commands.Cog):
                         if s.position >= len(s.queue):
                             s.queue = []
                             s.position = 0
-                            next_t = await self.bot.engine.start_radio(
+                            next_t = await self.bot.engine.start_radio_and_play(
                                 s, user_id=s.queue_owner_user_id
                             )
-                            if next_t:
-                                next_t = await self.bot.engine.play_track(s)
                         else:
                             next_t = await self.bot.engine.play_track(s)
                         if not next_t:
@@ -631,15 +629,12 @@ class PlaybackCog(commands.Cog):
                 _stuck_count = 0
                 s.queue = []
                 s.position = 0
-                track = await self.bot.engine.start_radio(s, user_id=s.queue_owner_user_id)
-                if track:
-                    # start_radio only builds the queue — need play_track to
-                    # resolve the path and actually start audio playback
-                    next_t = await self.bot.engine.play_track(s)
-                    if next_t:
-                        await self._after_track_started(ctx, s)
-                    else:
-                        await self._finish_playback(ctx, s, "Playlist ended.")
+                # Build the queue and start playback atomically.
+                next_t = await self.bot.engine.start_radio_and_play(
+                    s, user_id=s.queue_owner_user_id
+                )
+                if next_t:
+                    await self._after_track_started(ctx, s)
                 else:
                     await self._finish_playback(ctx, s, "Playlist ended.")
 
