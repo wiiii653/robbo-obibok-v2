@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .persistence import load_json, save_json
+from .persistence import is_safe_track_path, load_json, save_json
 
 FAVORITES_SCHEMA_VERSION = 2
 PLAYLIST_SCHEMA_VERSION = 2
@@ -15,7 +15,7 @@ def _normalize_track_entry(entry: object) -> dict | None:
     if not isinstance(entry, dict):
         return None
     filepath = entry.get("filepath")
-    if not isinstance(filepath, str) or not filepath:
+    if not is_safe_track_path(filepath):
         return None
     title = entry.get("title", "")
     author = entry.get("author", "")

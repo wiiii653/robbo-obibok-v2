@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .models import PlaybackState
-from .persistence import load_json, save_json
+from .persistence import is_safe_track_path, load_json, save_json
 
 QUEUE_SCHEMA_VERSION = 2
 BLACKLIST_SCHEMA_VERSION = 2
@@ -41,11 +41,36 @@ def normalize_queue_record(data: object) -> dict | None:
         or not all(isinstance(item, str) and item for item in queue_collection_ids)
     ):
         return None
+    surviving = [
+        (index, item, queue_collection_ids[index])
+        for index, item in enumerate(queue)
+        if is_safe_track_path(item)
+    ]
+    filtered_queue = [item for _, item, _ in surviving]
+    filtered_collection_ids = [collection_id for _, _, collection_id in surviving]
+    if filtered_queue:
+        position_index = next(
+            (
+                index
+                for index, (original_index, _, _) in enumerate(surviving)
+                if original_index == position
+            ),
+            next(
+                (
+                    index
+                    for index, (original_index, _, _) in enumerate(surviving)
+                    if original_index > position
+                ),
+                len(filtered_queue) - 1,
+            ),
+        )
+    else:
+        position_index = 0
     return {
         "schema_version": schema_version,
-        "queue": list(queue),
-        "queue_collection_ids": list(queue_collection_ids),
-        "position": position,
+        "queue": filtered_queue,
+        "queue_collection_ids": filtered_collection_ids,
+        "position": position_index,
         "is_looping": is_looping,
         "collection_mode": collection_mode,
     }
@@ -57,7 +82,7 @@ def can_restore_queue(saved: dict | None, tracks: list[str] | None, collection_m
     if saved.get("collection_mode") != collection_mode:
         return False
     queue = saved.get("queue")
-    if not isinstance(queue, list) or not all(isinstance(item, str) for item in queue):
+    if not isinstance(queue, list) or not all(is_safe_track_path(item) for item in queue):
         return False
     # Reject trivially small queues — they are almost certainly remnants
     # from a failed run (e.g. first track failed, queue saved with 1 entry

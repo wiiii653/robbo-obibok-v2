@@ -69,3 +69,19 @@ class TestLoadTracksFromCache:
 
     def test_load_nonexistent(self, tmp_path):
         assert load_tracks_from_cache(tmp_path / "nope.json") is None
+
+    def test_load_tracks_filters_unsafe_paths(self, tmp_path):
+        cache = {
+            "tracks": [
+                {"path": 123},
+                {"path": ""},
+                {"path": "../evil.sap"},
+                {"path": "/etc/passwd"},
+                {"path": "a/../b.sap"},
+                {"path": "good.sap"},
+            ]
+        }
+        filepath = tmp_path / "cache.json"
+        filepath.write_text(json.dumps(cache))
+
+        assert load_tracks_from_cache(filepath) == ["good.sap"]
