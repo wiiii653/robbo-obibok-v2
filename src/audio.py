@@ -156,28 +156,6 @@ def kill_player() -> None:
             pass
 
 
-# Od 2026-08-05 SAP TYPE D/E gra natywny plugin sap.so (ASAP 8.0.0) —
-# GME/console.so nie jest już jedynym dekoderem SAP. Wszystkie typy
-# (A-E, S, dual-POKEY, stereo) są wspierane, więc nic nie odrzucamy z góry.
-UNSUPPORTED_SAP_TYPES: set[str] = set()
-
-
-def _get_sap_type(filepath: str) -> str | None:
-    """Read the first ~5 lines of an SAP file and return its TYPE value."""
-    try:
-        with open(filepath, "r", encoding="ascii", errors="replace") as f:
-            for _ in range(10):
-                line = f.readline()
-                if not line:
-                    break
-                stripped = line.strip().rstrip("\r")
-                if stripped.startswith("TYPE "):
-                    return stripped[5:].strip()
-    except OSError:
-        pass
-    return None
-
-
 def _get_sap_songs_count(filepath: str) -> int | None:
     """Read the SAP header and return SONGS count, or None."""
     try:
@@ -315,31 +293,10 @@ def _get_sid_songs_count(filepath: str) -> int:
     return max(songs, 1)
 
 
-def _is_sap_supported(filepath: str) -> tuple[bool, str]:
-    """Check if an SAP file can be played.
-
-    Since 2026-08-05 the native sap.so plugin (ASAP) plays every SAP type,
-    so this gate no longer refuses anything (kept for API compatibility).
-    """
-    if not filepath.lower().endswith(".sap"):
-        return True, ""
-    sap_type = _get_sap_type(filepath)
-    if sap_type is None:
-        return True, ""
-    if sap_type in UNSUPPORTED_SAP_TYPES:
-        return False, f"SAP TYPE {sap_type} not supported by Audacious Console plugin (GME 0.6.4)"
-    return True, ""
-
-
 def play_file(filepath: str, sink_name: str) -> bool:
     if not _audacious_ready:
         start_player(sink_name)
     logger.info("play_file: path=%s exists=%s", filepath, os.path.exists(filepath))
-    # Fast-fail on known-unsupported formats (e.g. SAP TYPE D)
-    supported, reason = _is_sap_supported(filepath)
-    if not supported:
-        logger.warning("play_file: REFUSED — %s, filepath=%s — skipping", reason, filepath)
-        return False
     _audtool_call("playlist-clear")
     time.sleep(0.3)  # wait for Audacious to finish clearing the playlist
     add_ok = _audtool_call("playlist-addurl", filepath)
@@ -352,7 +309,7 @@ def play_file(filepath: str, sink_name: str) -> bool:
             logger.info("play_file: playing after attempt %d", attempt + 1)
             return True
         # On attempts 2+, re-clear and re-add — some formats need a fresh kick
-        # (GME/SID plugins may need more time or a re-init for certain files)
+        # Console and SID plugins may need more time or a re-init for some files.
         if attempt >= 1:
             logger.warning("play_file: attempt %d not playing, re-adding...", attempt + 1)
             _audtool_call("playlist-clear")
@@ -523,7 +480,7 @@ def enable_compressor() -> None:
 
 def enable_console_plugin() -> None:
     _audtool_call("plugin-enable", "Console", "on")
-    logger.info("Audacious Console plugin enabled (SAP/AY/YM)")
+    logger.info("Audacious Console plugin enabled (AY/NSF/VGM)")
 
 
 def enable_sid_plugin() -> None:
@@ -532,7 +489,7 @@ def enable_sid_plugin() -> None:
 
 
 def disable_repeat() -> None:
-    """Disable playlist repeat so GME doesn't loop finished tracks."""
+    """Disable playlist repeat so finished tracks do not loop."""
     try:
         result = subprocess.run(
             ["audtool", "playlist-repeat-status"],
@@ -546,7 +503,7 @@ def disable_repeat() -> None:
             return
         if status != "on":
             # Never toggle blindly — if repeat was actually off, a blind
-            # toggle would turn it ON and loop finished GME tracks.
+            # toggle would turn it ON and loop finished tracks.
             logger.warning(
                 "Audacious playlist repeat status unknown (%r); leaving it unchanged", status
             )
