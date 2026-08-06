@@ -130,6 +130,19 @@ class TestPlaybackControl:
 
 class TestPlayFile:
     @patch("src.audio._move_to_sink")
+    @patch("src.audio.start_player")
+    @patch("src.audio._audtool_call")
+    @patch("src.audio._audacious_ready", False)
+    def test_play_file_sap_attempts_playback(self, mock_audtool, mock_start, mock_move):
+        mock_audtool.side_effect = [True, True, True, True]
+
+        result = play_file("x.sap", "test_sink")
+
+        assert result is True
+        mock_start.assert_called_once_with("test_sink")
+        mock_audtool.assert_any_call("playlist-addurl", "x.sap")
+
+    @patch("src.audio._move_to_sink")
     @patch("src.audio._audtool_call")
     @patch("src.audio._audacious_ready", True)
     def test_play_file_success(self, mock_audtool, mock_move):

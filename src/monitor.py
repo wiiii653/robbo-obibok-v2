@@ -223,8 +223,8 @@ class TrackMonitor:
                 )
                 self._last_output = elapsed
                 return
-            # Output length resets are format quirks (MOD pattern loops,
-            # GME internal loop), not real track ends. A single-track
+            # Output length resets are format quirks (MOD pattern loops),
+            # not real track ends. A single-track
             # audacious playlist never auto-advances, so a drop can only
             # mean a format anomaly.
             if self._last_output >= 10 and elapsed <= 5:
@@ -252,8 +252,8 @@ class TrackMonitor:
         total = self._cached_song_length
 
         # For multi-subsong SAP files use total time from header
-        # The header TIME is more reliable than GME's audtool value
-        # (GME often inflates song_length for some SAP files).
+        # The header TIME is more reliable than the reported player value
+        # for some SAP files.
         if is_console and hasattr(self.audio, "total_sap_time"):
             sap_total = self.audio.total_sap_time()
             if sap_total is not None:
@@ -279,9 +279,8 @@ class TrackMonitor:
             timeout = compute_timeout(total, is_console_format=is_console)
 
         if is_console:
-            # Console/GME formats: output-length resets at subsong
-            # transitions (GME internal track cycling). Use wall-clock
-            # time since _track_started_at instead of output-length.
+            # Console formats: output-length resets at subsong transitions.
+            # Use wall-clock time since _track_started_at instead.
             now = asyncio.get_running_loop().time()
             track_time = now - self._track_started_at
             if track_time >= timeout:

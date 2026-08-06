@@ -295,11 +295,6 @@ class PlaybackCog(commands.Cog):
             if not state.search_results or idx < 0 or idx >= len(state.search_results):
                 return await ctx.send("Invalid number. Use !search first.")
             path = state.search_results[idx]
-            from .audio import _is_sap_supported
-
-            supported, reason = _is_sap_supported(path)
-            if not supported:
-                return await ctx.send(f"⛔ Can't play `{path.rsplit('/', 1)[-1]}` — {reason}.")
             if not self.bot.try_acquire_lease(ctx.guild):
                 owner = self.bot.playback_lease.owner_guild_name or "another server"
                 return await ctx.send(f"🔊 Music is already playing in **{owner}**.")
