@@ -1,5 +1,6 @@
 # Robbo Obibok v2 — Configuration
-# Copy this file to config.yaml and adjust to your needs.
+# This is the operator configuration loaded by default. For a minimal template,
+# see config.example.yaml if present.
 
 # Discord bot token must be provided via DISCORD_BOT_TOKEN.
 
@@ -14,6 +15,7 @@ audio:
   sink_name: "robbo_bot"
 
 # Playback
+# loop: true is an intentional operator override of the code default (False).
 playback:
   loop: true  # true = loop queue (wrap to start when playlist ends)
   shuffle: true

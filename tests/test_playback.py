@@ -187,6 +187,18 @@ class TestPlaybackEngine:
         assert save_mock.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_queue_save_failure_does_not_start_debounce(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        state = PlaybackState(guild_id=123, queue=["a.sap"], position=0)
+        save_mock = MagicMock(side_effect=[False, True])
+        monkeypatch.setattr("src.playback.save_queue", save_mock)
+
+        await engine._save_queue(state)
+        await engine._save_queue(state)
+
+        assert save_mock.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_queue_save_immediate_bypasses_debounce(self, tmp_path, monkeypatch):
         engine = self._make_engine(tmp_path)
         state = PlaybackState(guild_id=123, queue=["a.sap"], position=0)
