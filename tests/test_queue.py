@@ -122,6 +122,22 @@ class TestQueuePersistence:
         assert normalized is not None
         assert normalized["queue"] == ["a.sap", "b.sap"]
 
+    def test_normalize_queue_record_filters_unsafe_paths_and_ids(self):
+        data = {
+            "queue": ["../evil.sap", "good.sap", "also-good.sap"],
+            "queue_collection_ids": ["bad", "asma", "hvsc"],
+            "position": 1,
+            "is_looping": False,
+            "collection_mode": "asma",
+        }
+
+        normalized = normalize_queue_record(data)
+
+        assert normalized is not None
+        assert normalized["queue"] == ["good.sap", "also-good.sap"]
+        assert normalized["queue_collection_ids"] == ["asma", "hvsc"]
+        assert normalized["position"] == 0
+
     def test_normalize_queue_record_accepts_v1_records(self):
         data = {
             "queue": ["a.sap", "b.sap"],

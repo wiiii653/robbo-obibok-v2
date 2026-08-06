@@ -18,6 +18,16 @@ except ImportError:  # pragma: no cover - production deployments are Linux
 logger = logging.getLogger(__name__)
 
 
+def is_safe_track_path(path: object) -> bool:
+    """Return whether path is a non-empty, relative, non-escaping track path."""
+    if not isinstance(path, str) or not path.strip():
+        return False
+    if path.startswith(("/", "\\")) or ":" in path:
+        return False
+    parts = path.replace("\\", "/").split("/")
+    return ".." not in parts and all(part not in ("", ".") for part in parts)
+
+
 def _lock_path(path: Path) -> Path:
     return path.with_name(f".{path.name}.lock")
 
@@ -97,5 +107,10 @@ def load_tracks_from_cache(cache_path: str | Path) -> list[str] | None:
     data = load_json(cache_path)
     if not isinstance(data, dict):
         return None
-    tracks = [t["path"] for t in data.get("tracks", []) if isinstance(t, dict) and "path" in t]
+    raw_tracks = data.get("tracks", [])
+    if not isinstance(raw_tracks, list):
+        return None
+    tracks = [
+        t["path"] for t in raw_tracks if isinstance(t, dict) and is_safe_track_path(t.get("path"))
+    ]
     return tracks if tracks else None

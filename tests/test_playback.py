@@ -264,6 +264,20 @@ class TestPlaybackEngine:
         path = asyncio.run(engine._resolve_track_path(state, "song.sid"))
         assert path == tmp_path / "archiwum" / "hvsc" / "C64Music" / "song.sid"
 
+    def test_build_track_path_rejects_unsafe_paths(self, tmp_path):
+        engine = self._make_engine(tmp_path)
+        from src.models import COLLECTIONS
+
+        assert engine._build_track_path(COLLECTIONS["asma"], "../escape.sap") is None
+        assert engine._build_track_path(COLLECTIONS["asma"], "/abs/path.sap") is None
+
+    def test_build_track_path_stays_under_archive(self, tmp_path):
+        engine = self._make_engine(tmp_path)
+        from src.models import COLLECTIONS
+
+        path = engine._build_track_path(COLLECTIONS["asma"], "dir/good.sap")
+        assert path == tmp_path / "archiwum" / "asma" / "dir" / "good.sap"
+
     def test_start_radio_preserves_index_order_when_shuffle_disabled(self, tmp_path, monkeypatch):
         engine = self._make_engine(tmp_path)
         engine.shuffle_queue = False

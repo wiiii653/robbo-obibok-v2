@@ -12,6 +12,7 @@ from .audio import AudioController
 from .collection_loader import extract_metadata, get_collection, load_raw_paths
 from .favorites import Favorites
 from .models import Collection, PlaybackState
+from .persistence import is_safe_track_path
 from .queue import (
     Blacklist,
     can_restore_queue,
@@ -209,13 +210,23 @@ class PlaybackEngine:
             self._reset_runtime_state(state)
             await self._save_queue(state, immediate=True)
 
-    def _build_track_path(self, col: Collection, track: str) -> Path:
+    def _build_track_path(self, col: Collection, track: str) -> Path | None:
         """Build the full filesystem path for a track, handling archive_path prefix dedup."""
+        if not is_safe_track_path(track):
+            logger.warning("Unsafe track path rejected: %s", track)
+            return None
         archive_parts = col.archive_path.split("/")
         if len(archive_parts) > 1 and track.replace("\\", "/").startswith(archive_parts[-1] + "/"):
             base = "/".join(archive_parts[:-1])
-            return Path(self.root_dir) / self.archive_root / base / track
-        return Path(self.root_dir) / self.archive_root / col.archive_path / track
+            candidate = Path(self.root_dir) / self.archive_root / base / track
+        else:
+            candidate = Path(self.root_dir) / self.archive_root / col.archive_path / track
+        root = (Path(self.root_dir) / self.archive_root).resolve()
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root):
+            logger.warning("Track path escapes archive root, rejecting: %s", track)
+            return None
+        return resolved
 
     def search(self, query: str, state: PlaybackState) -> list[str]:
         query_lower = query.lower()
@@ -255,6 +266,8 @@ class PlaybackEngine:
                 continue
             metadata_probes += 1
             full_path = self._build_track_path(col, path)
+            if full_path is None:
+                continue
             meta = extract_metadata(str(full_path), state.collection_mode)
             name = meta.get("NAME", meta.get("name", ""))
             author = meta.get("AUTHOR", meta.get("author", ""))
@@ -295,6 +308,8 @@ class PlaybackEngine:
         if not col:
             return {}
         full_path = self._build_track_path(col, filepath)
+        if full_path is None:
+            return {}
         return extract_metadata(str(full_path), collection_id)
 
     def _collection_for_position(self, state: PlaybackState) -> str:

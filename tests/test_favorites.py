@@ -56,6 +56,24 @@ class TestFavorites:
         assert len(tracks) == 1
         assert tracks[0]["filepath"] == "ok.sap"
 
+    def test_ignores_unsafe_filepaths(self, tmp_path):
+        path = tmp_path / "favorites.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "1": [
+                        {"filepath": "../evil.sap"},
+                        {"filepath": "/etc/passwd"},
+                        {"filepath": "good.sap"},
+                    ]
+                }
+            )
+        )
+
+        tracks = Favorites(str(tmp_path)).get_tracks(1)
+
+        assert [track["filepath"] for track in tracks] == ["good.sap"]
+
     def test_user_isolation(self, tmp_path):
         favs = Favorites(str(tmp_path))
         favs.toggle(1, "a.sap")
@@ -119,6 +137,27 @@ class TestPlaylistLibrary:
         loaded = lib.load("My Playlist")
         assert loaded is not None
         assert len(loaded["tracks"]) == 1
+
+    def test_load_ignores_unsafe_filepaths(self, tmp_path):
+        lib = PlaylistLibrary(str(tmp_path))
+        path = tmp_path / "var" / "playlists" / "My Playlist.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "name": "My Playlist",
+                    "tracks": [
+                        {"filepath": "../evil.sap"},
+                        {"filepath": "good.sap"},
+                    ],
+                }
+            )
+        )
+
+        loaded = lib.load("My Playlist")
+
+        assert loaded is not None
+        assert [track["filepath"] for track in loaded["tracks"]] == ["good.sap"]
 
     def test_safe_name(self, tmp_path):
         lib = PlaylistLibrary(str(tmp_path))
