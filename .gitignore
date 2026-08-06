@@ -30,3 +30,9 @@ BUILD_PLAN.md
 .hermes/
 *.lock
 *.part
+# Native input plugins (plugins/ym, plugins/sap) — build artifacts
+plugins/*/*.so
+plugins/*/build/
+plugins/*/test_stsound
+plugins/*/test_asap
+plugins/*/*.o
