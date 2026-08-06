@@ -487,6 +487,79 @@ class TestSapTimeParsing:
         assert _get_sap_songs_count(str(filepath)) is None
 
 
+class TestTotalSapTime:
+    @patch("src.audio.song_length")
+    def test_single_song_uses_max_of_reported_and_header(self, mock_song_length, tmp_path):
+        mock_song_length.return_value = 52
+        filepath = tmp_path / "single.sap"
+        filepath.write_text("TIME 00:44\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() == 52
+
+    @patch("src.audio.song_length")
+    def test_three_song_native_total_is_not_multiplied(self, mock_song_length, tmp_path):
+        mock_song_length.return_value = 120
+        filepath = tmp_path / "three.sap"
+        filepath.write_text("SONGS 3\nTIME 00:40\nTIME 00:40\nTIME 00:40\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() == 120
+
+    @patch("src.audio.song_length")
+    def test_two_song_native_total_is_not_multiplied(self, mock_song_length, tmp_path):
+        mock_song_length.return_value = 80
+        filepath = tmp_path / "two.sap"
+        filepath.write_text("SONGS 2\nTIME 00:40\nTIME 00:40\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() == 80
+
+    @pytest.mark.parametrize("reported", [-1, 0])
+    @patch("src.audio.song_length")
+    def test_unknown_reported_length_falls_back_to_header(
+        self, mock_song_length, reported, tmp_path
+    ):
+        mock_song_length.return_value = reported
+        filepath = tmp_path / "header.sap"
+        filepath.write_text("SONGS 3\nTIME 00:40\nTIME 00:40\nTIME 00:40\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() == 120
+
+    @patch("src.audio.song_length")
+    def test_missing_header_falls_back_to_reported(self, mock_song_length, tmp_path):
+        mock_song_length.return_value = 120
+        filepath = tmp_path / "no-time.sap"
+        filepath.write_text("SONGS 3\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() == 120
+
+    @patch("src.audio.song_length")
+    def test_non_sap_returns_none(self, mock_song_length, tmp_path):
+        mock_song_length.return_value = 120
+        filepath = tmp_path / "track.sid"
+        filepath.write_text("TIME 02:00\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.total_sap_time() is None
+
+    def test_loop_flag_is_preserved(self, tmp_path):
+        filepath = tmp_path / "loop.sap"
+        filepath.write_text("TIME 00:40 LOOP\n")
+
+        controller = AudioController(_last_filepath=str(filepath))
+
+        assert controller.sap_has_loop() is True
+
+
 class TestAyHeader:
     def test_ay_max_track_zero_for_non_ay(self):
         assert _get_ay_max_track("/nonexistent/file.sap") == 0
