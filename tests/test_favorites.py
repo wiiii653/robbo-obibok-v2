@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import src.favorites as favorites_module
 from src.favorites import Favorites, PlaylistLibrary
 
 
@@ -38,6 +39,29 @@ class TestFavorites:
         assert favs.has_track(1, "nope.sap") is False
         favs.toggle(1, "yes.sap")
         assert favs.has_track(1, "yes.sap") is True
+
+    def test_membership_set_updates_on_add_and_remove(self, tmp_path):
+        favs = Favorites(str(tmp_path))
+        for filepath in ("one.sap", "two.sap", "three.sap"):
+            assert favs.add(1, filepath) is True
+        assert favs.has_track(1, "one.sap") is True
+        assert favs.has_track(1, "missing.sap") is False
+
+        assert favs.remove(1, "two.sap") is True
+        assert favs.has_track(1, "two.sap") is False
+        assert favs.has_track(1, "three.sap") is True
+
+    def test_oversized_file_is_skipped(self, tmp_path, monkeypatch, caplog):
+        monkeypatch.setattr(favorites_module, "MAX_FAVORITES_ENTRIES_PER_USER", 2)
+        path = tmp_path / "favorites.json"
+        path.write_text(
+            json.dumps({"1": [{"filepath": f"track-{index}.sap"} for index in range(3)]})
+        )
+
+        favs = Favorites(str(tmp_path))
+
+        assert favs.get_tracks(1) == []
+        assert "Skipping oversized favorites file" in caplog.text
 
     def test_persistence(self, tmp_path):
         favs = Favorites(str(tmp_path))

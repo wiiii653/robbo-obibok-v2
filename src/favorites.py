@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -9,6 +10,10 @@ from .persistence import is_safe_track_path, load_json, save_json
 
 FAVORITES_SCHEMA_VERSION = 2
 PLAYLIST_SCHEMA_VERSION = 2
+MAX_FAVORITES_TOTAL_ENTRIES = 100_000
+MAX_FAVORITES_ENTRIES_PER_USER = 50_000
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_track_entry(entry: object) -> dict | None:
@@ -64,6 +69,7 @@ class Favorites:
     def __init__(self, root_dir: str) -> None:
         self._filepath = Path(root_dir) / "favorites.json"
         self._data: dict[str, list[dict]] = {}
+        self._filepath_sets: dict[str, set[str]] = {}
         self._loaded = False
 
     def _ensure_loaded(self) -> None:
@@ -71,6 +77,17 @@ class Favorites:
             return
         raw = load_json(self._filepath)
         if isinstance(raw, dict):
+            raw_lists = [value for value in raw.values() if isinstance(value, list)]
+            total_entries = sum(len(value) for value in raw_lists)
+            oversized_user = any(len(value) > MAX_FAVORITES_ENTRIES_PER_USER for value in raw_lists)
+            if total_entries > MAX_FAVORITES_TOTAL_ENTRIES or oversized_user:
+                logger.warning(
+                    "Skipping oversized favorites file %s (%d entries)",
+                    self._filepath,
+                    total_entries,
+                )
+                self._loaded = True
+                return
             normalized: dict[str, list[dict]] = {}
             for key, value in raw.items():
                 if not isinstance(value, list):
@@ -89,6 +106,9 @@ class Favorites:
                 deduped.reverse()
                 normalized[key] = deduped
             self._data = normalized
+            self._filepath_sets = {
+                key: {track["filepath"] for track in tracks} for key, tracks in normalized.items()
+            }
         self._loaded = True
 
     def _save(self) -> None:
@@ -96,7 +116,10 @@ class Favorites:
 
     def _track_index(self, user_id: int, filepath: str) -> int | None:
         self._ensure_loaded()
-        tracks = self._data.get(str(user_id), [])
+        uid = str(user_id)
+        if filepath not in self._filepath_sets.get(uid, set()):
+            return None
+        tracks = self._data.get(uid, [])
         for index, track in enumerate(tracks):
             if track.get("filepath") == filepath:
                 return index
@@ -127,6 +150,7 @@ class Favorites:
         index = self._track_index(user_id, filepath)
         uid = str(user_id)
         tracks = self._data.setdefault(uid, [])
+        self._filepath_sets.setdefault(uid, set())
         if index is not None:
             return False
         tracks.append(
@@ -138,6 +162,7 @@ class Favorites:
                 "added_at": time.time(),
             }
         )
+        self._filepath_sets[uid].add(filepath)
         self._save()
         return True
 
@@ -151,6 +176,7 @@ class Favorites:
             return False
         tracks = self._data.get(str(user_id), [])
         del tracks[index]
+        self._filepath_sets.setdefault(str(user_id), set()).discard(filepath)
         self._save()
         return True
 
@@ -173,7 +199,8 @@ class Favorites:
         return False
 
     def has_track(self, user_id: int, filepath: str) -> bool:
-        return self._track_index(user_id, filepath) is not None
+        self._ensure_loaded()
+        return filepath in self._filepath_sets.get(str(user_id), set())
 
 
 class PlaylistLibrary:

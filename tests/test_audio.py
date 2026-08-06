@@ -159,6 +159,19 @@ class TestPlayFile:
         result = play_file("test.sap", "test_sink")
         assert result is False
 
+    @pytest.mark.parametrize(
+        "type_line", ["TYPE A", "TYPE B", "TYPE C", "TYPE D", "TYPE E", "TYPE S"]
+    )
+    @patch("src.audio._move_to_sink")
+    @patch("src.audio._audtool_call", return_value=True)
+    @patch("src.audio._audacious_ready", True)
+    def test_play_file_accepts_all_sap_types(self, mock_audtool, mock_move, type_line, tmp_path):
+        filepath = tmp_path / f"{type_line[-1]}.sap"
+        filepath.write_text(f"SAP\n{type_line}\n")
+
+        assert play_file(str(filepath), "test_sink") is True
+        mock_audtool.assert_any_call("playlist-addurl", str(filepath))
+
 
 class TestAudioController:
     def test_controller_creation(self):
@@ -614,6 +627,53 @@ class TestTotalSapTime:
         controller = AudioController(_last_filepath=str(filepath))
 
         assert controller.sap_has_loop() is True
+
+
+class TestTotalAyTime:
+    @patch("src.audio.song_length", return_value=60)
+    def test_multitrack_ay_uses_masked_max_track(self, mock_song_length, tmp_path):
+        filepath = tmp_path / "multi.ay"
+        data = bytearray(20)
+        data[:8] = b"ZXAYEMUL"
+        data[16] = 3
+        filepath.write_bytes(data)
+
+        assert AudioController(_last_filepath=str(filepath)).total_ay_time() == 240
+
+    @patch("src.audio.song_length", return_value=60)
+    def test_ay_masks_header_flags(self, mock_song_length, tmp_path):
+        filepath = tmp_path / "flagged.ay"
+        data = bytearray(20)
+        data[:8] = b"ZXAYEMUL"
+        data[16] = 0x13
+        filepath.write_bytes(data)
+
+        assert AudioController(_last_filepath=str(filepath)).total_ay_time() == 240
+
+    def test_non_ay_returns_none(self, tmp_path):
+        filepath = tmp_path / "track.sid"
+        filepath.write_bytes(b"PSID" + bytes(20))
+
+        assert AudioController(_last_filepath=str(filepath)).total_ay_time() is None
+
+
+class TestTotalSidTime:
+    @patch("src.audio.song_length", return_value=120)
+    def test_multisong_sid_uses_big_endian_song_count(self, mock_song_length, tmp_path):
+        filepath = tmp_path / "multi.sid"
+        data = bytearray(16)
+        data[:4] = b"PSID"
+        data[14:16] = (3).to_bytes(2, "big")
+        filepath.write_bytes(data)
+
+        assert AudioController(_last_filepath=str(filepath)).total_sid_time() == 360
+
+    @patch("src.audio.song_length", return_value=120)
+    def test_non_sid_returns_none(self, mock_song_length, tmp_path):
+        filepath = tmp_path / "track.ay"
+        filepath.write_bytes(b"ZXAYEMUL" + bytes(20))
+
+        assert AudioController(_last_filepath=str(filepath)).total_sid_time() is None
 
 
 class TestAyHeader:

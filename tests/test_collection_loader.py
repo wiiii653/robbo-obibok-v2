@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.collection_loader import (
     extract_metadata,
     flip_collection,
     get_collection,
     load_raw_paths,
     parse_sap_header,
+    resolve_collection_for_filepath,
     resolve_collection_for_saved_track,
 )
 from src.models import COLLECTIONS, FLIP_ORDER
@@ -37,6 +40,10 @@ class TestCollectionRegistry:
 
     def test_get_nonexistent_collection(self):
         assert get_collection("nonexistent") is None
+
+    @pytest.mark.parametrize("filepath", ["path/to/SONG.YM", "path/to/song.ym"])
+    def test_resolves_ym_case_insensitively(self, filepath):
+        assert resolve_collection_for_filepath(filepath) == "ym"
 
 
 class TestFlipCollection:
