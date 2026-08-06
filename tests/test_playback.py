@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -304,6 +304,153 @@ class TestPlaybackEngine:
         assert state.is_playing is False
         assert state.current_track == ""
         assert state.current_collection_id == ""
+
+
+class TestStartRadioLock:
+    def _make_engine(self, tmp_path):
+        audio = MagicMock()
+        audio.play.return_value = True
+        audio.stop.return_value = None
+        favs = Favorites(str(tmp_path))
+        bl = Blacklist(str(tmp_path))
+        return PlaybackEngine(audio=audio, favorites=favs, blacklist=bl, root_dir=str(tmp_path))
+
+    @pytest.mark.asyncio
+    async def test_start_radio_serializes_stop(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        engine._save_queue = AsyncMock()
+        state = PlaybackState()
+        load_started = asyncio.Event()
+        release_load = asyncio.Event()
+
+        async def direct_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr("src.playback.asyncio.to_thread", direct_to_thread)
+
+        async def fake_start(*args, **kwargs):
+            load_started.set()
+            await release_load.wait()
+            return "first.sap"
+
+        monkeypatch.setattr(engine, "_start_radio_unlocked", fake_start)
+
+        start_task = asyncio.create_task(engine.start_radio(state))
+        await load_started.wait()
+        stop_task = asyncio.create_task(engine.stop(state))
+        await asyncio.sleep(0)
+        assert not stop_task.done()
+
+        release_load.set()
+        await start_task
+        await stop_task
+        assert state.is_playing is False
+
+    @pytest.mark.asyncio
+    async def test_start_radio_and_play_holds_lock_through_play(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        engine._save_queue = AsyncMock()
+        state = PlaybackState(guild_id=123)
+        load_started = asyncio.Event()
+        release_load = asyncio.Event()
+        play_started = asyncio.Event()
+        release_play = asyncio.Event()
+        play_calls = 0
+
+        async def blocked_play(current_state):
+            nonlocal play_calls
+            play_calls += 1
+            assert current_state.queue == ["first.sap"]
+            if play_calls == 1:
+                play_started.set()
+                await release_play.wait()
+            return "first.sap"
+
+        monkeypatch.setattr(engine, "_play_track_unlocked", blocked_play)
+
+        async def fake_start(*args, **kwargs):
+            load_started.set()
+            await release_load.wait()
+            state.queue = ["first.sap"]
+            return "first.sap"
+
+        monkeypatch.setattr(engine, "_start_radio_unlocked", fake_start)
+
+        start_task = asyncio.create_task(engine.start_radio_and_play(state))
+        await load_started.wait()
+        release_load.set()
+        await play_started.wait()
+
+        competing_play = asyncio.create_task(engine.play_track(state))
+        await asyncio.sleep(0)
+        assert not competing_play.done()
+
+        release_play.set()
+        assert await start_task == "first.sap"
+        assert await competing_play == "first.sap"
+
+    @pytest.mark.asyncio
+    async def test_start_radio_locked_wrapper_builds_and_resets_state(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        engine._save_queue = AsyncMock()
+
+        async def direct_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr("src.playback.asyncio.to_thread", direct_to_thread)
+        engine.shuffle_queue = False
+        state = PlaybackState(
+            guild_id=123,
+            current_track="stale.sap",
+            current_collection_id="tiny",
+            voice_channel_id=999,
+            search_results=["stale.sap"],
+            search_collection_id="tiny",
+        )
+        monkeypatch.setattr(
+            "src.playback.load_raw_paths", lambda *args: ["first.sap", "second.sap"]
+        )
+
+        result = await engine.start_radio(state)
+
+        assert result == "first.sap"
+        assert state.queue == ["first.sap", "second.sap"]
+        assert state.current_track == ""
+        assert state.current_collection_id == ""
+        assert state.voice_channel_id is None
+        assert state.search_results == []
+        assert state.search_collection_id == ""
+
+    @pytest.mark.asyncio
+    async def test_start_radio_uses_independent_guild_locks(self, tmp_path, monkeypatch):
+        engine = self._make_engine(tmp_path)
+        engine._save_queue = AsyncMock()
+        state_a = PlaybackState(guild_id=123)
+        state_b = PlaybackState(guild_id=456)
+        load_a_started = asyncio.Event()
+        release_a = asyncio.Event()
+        first_load = True
+
+        async def fake_start(current_state, *args, **kwargs):
+            nonlocal first_load
+            if first_load:
+                first_load = False
+                load_a_started.set()
+                await release_a.wait()
+            return current_state.queue[0]
+
+        state_a.queue = ["track-a.sap"]
+        state_b.queue = ["track-b.sap"]
+        monkeypatch.setattr(engine, "_start_radio_unlocked", fake_start)
+
+        task_a = asyncio.create_task(engine.start_radio(state_a))
+        await load_a_started.wait()
+        task_b = asyncio.create_task(engine.start_radio(state_b))
+        assert await asyncio.wait_for(task_b, timeout=1) == "track-b.sap"
+        assert not task_a.done()
+
+        release_a.set()
+        assert await task_a == "track-a.sap"
 
 
 class TestTrackEndBehavior:
