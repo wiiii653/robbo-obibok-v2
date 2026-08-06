@@ -36,8 +36,9 @@ def setup_sink(sink_name: str) -> bool:
             ["pactl", "list", "sinks", "short"],
             capture_output=True,
             text=True,
+            timeout=10,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return False
     if result.returncode != 0:
         return False
@@ -53,8 +54,9 @@ def setup_sink(sink_name: str) -> bool:
                 "sink_properties=device.description=Robbo_Obibok",
             ],
             capture_output=True,
+            timeout=10,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return False
     return created.returncode == 0
 
@@ -99,12 +101,18 @@ def start_player(sink_name: str = "robbo_bot") -> bool:
     # only the child it starts and can safely clean up that child on restart.
     kill_player()
 
-    proc = subprocess.Popen(
-        ["audacious", "--headless"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env={**os.environ, "PULSE_SINK": sink_name},
-    )
+    try:
+        proc = subprocess.Popen(
+            ["audacious", "--headless"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={**os.environ, "PULSE_SINK": sink_name},
+        )
+    except OSError as exc:
+        logger.warning("start_player: could not launch audacious: %s", exc)
+        _audacious_ready = False
+        _audacious_process = None
+        return False
     _audacious_process = proc
     try:
         for _ in range(20):
@@ -570,7 +578,11 @@ def ensure_audacious(sink_name: str = "robbo_bot") -> None:
 
 
 def _is_audacious_alive() -> bool:
-    result = subprocess.run(["pgrep", "-x", "audacious"], capture_output=True)
+    try:
+        result = subprocess.run(["pgrep", "-x", "audacious"], capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        logger.warning("Health watchdog: could not check audacious process")
+        return False
     if result.returncode != 0:
         logger.warning("Health watchdog: pgrep audacious returned %d", result.returncode)
         return False
@@ -584,12 +596,17 @@ def _is_audacious_alive() -> bool:
 
 def _move_to_sink(sink_name: str) -> None:
     env = {**os.environ, "LC_ALL": "C"}
-    result = subprocess.run(
-        ["pactl", "list", "sink-inputs"],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            ["pactl", "list", "sink-inputs"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Could not list PulseAudio sink inputs: %s", exc)
+        return
     for block in result.stdout.split("Sink Input #")[1:]:
         index, _, details = block.partition("\n")
         if not index.strip().isdigit():
@@ -600,10 +617,15 @@ def _move_to_sink(sink_name: str) -> None:
             or 'application.process.binary = "audacious"' in details_lower
         )
         if is_audacious:
-            subprocess.run(
-                ["pactl", "move-sink-input", index.strip(), sink_name],
-                capture_output=True,
-            )
+            try:
+                subprocess.run(
+                    ["pactl", "move-sink-input", index.strip(), sink_name],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.warning("Could not move audacious to sink %s: %s", sink_name, exc)
+                continue
             logger.info("Moved audacious to sink %s", sink_name)
 
 

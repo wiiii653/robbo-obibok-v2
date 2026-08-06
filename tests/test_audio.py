@@ -239,10 +239,41 @@ Sink Input #42
         mock_run.assert_any_call(
             ["pactl", "move-sink-input", "42", "robbo_bot"],
             capture_output=True,
+            timeout=10,
         )
+
+    @patch("src.audio.subprocess.run", side_effect=subprocess.TimeoutExpired("pactl", 10))
+    def test_setup_sink_timeout(self, mock_run):
+        from src.audio import setup_sink
+
+        assert setup_sink("x") is False
+
+    @patch("src.audio.subprocess.run", side_effect=OSError("no pactl"))
+    def test_setup_sink_missing_pactl(self, mock_run):
+        from src.audio import setup_sink
+
+        assert setup_sink("x") is False
+
+    @patch("src.audio.subprocess.run", side_effect=subprocess.TimeoutExpired("pactl", 10))
+    def test_move_to_sink_timeout(self, mock_run):
+        from src.audio import _move_to_sink
+
+        _move_to_sink("x")
 
 
 class TestPlayerLifecycle:
+    @patch("src.audio.kill_player")
+    @patch("src.audio.subprocess.Popen", side_effect=OSError("no such file"))
+    def test_start_player_missing_binary(self, mock_popen, mock_kill):
+        import src.audio
+        from src.audio import start_player
+
+        src.audio._audacious_ready = False
+        src.audio._audacious_process = None
+
+        assert start_player() is False
+        assert src.audio._audacious_ready is False
+
     @patch("src.audio.time.sleep", return_value=None)
     @patch("src.audio.subprocess.Popen")
     @patch("src.audio.kill_player")
@@ -342,6 +373,18 @@ class TestPlayerLifecycle:
     @patch("src.audio.subprocess.run")
     def test_is_audacious_alive_false(self, mock_run, mock_version):
         mock_version.return_value = None
+        from src.audio import _is_audacious_alive
+
+        assert _is_audacious_alive() is False
+
+    @patch("src.audio.subprocess.run", side_effect=subprocess.TimeoutExpired("pgrep", 5))
+    def test_is_audacious_alive_timeout(self, mock_run):
+        from src.audio import _is_audacious_alive
+
+        assert _is_audacious_alive() is False
+
+    @patch("src.audio.subprocess.run", side_effect=OSError("no pgrep"))
+    def test_is_audacious_alive_missing_pgrep(self, mock_run):
         from src.audio import _is_audacious_alive
 
         assert _is_audacious_alive() is False
