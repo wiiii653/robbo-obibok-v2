@@ -92,6 +92,10 @@ class CollectionCog(commands.Cog):
     async def tiny(self, ctx: commands.Context) -> None:
         await self._switch(ctx, "tiny")
 
+    @commands.command(aliases=["scena", "demoscene", "pouet-demozoo"])
+    async def pouet(self, ctx: commands.Context) -> None:
+        await self._switch(ctx, "pouet")
+
     @commands.command(aliases=["keygen", "k"])
     async def kgen(self, ctx: commands.Context) -> None:
         await self._switch(ctx, "kgen")
