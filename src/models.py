@@ -127,6 +127,7 @@ COLLECTIONS: dict[str, Collection] = {
             "nsf",
             "vgm",
             "vgz",
+            "snd",
             "sndh",
         ],
         archive_path="party",
