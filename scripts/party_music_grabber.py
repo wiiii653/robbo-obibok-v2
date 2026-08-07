@@ -146,6 +146,15 @@ def _get_json(url: str, retries: int = 6) -> dict | None:
     return None
 
 
+# AppleDouble (._*) — pliki metadanych macOS; magic 00 05 16 07 na początku.
+def is_apple_double(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(4) == b"\x00\x05\x16\x07"
+    except OSError:
+        return False
+
+
 def _download(url: str, dest: Path, retries: int = 3) -> bool:
     """Pobierz plik do dest (atomic). Zwraca True gdy OK."""
     for attempt in range(retries):
@@ -368,6 +377,9 @@ def process_production(
                 else:
                     print("      ! archiwum nierozpakowane")
             for cand in candidates:
+                if is_apple_double(cand):
+                    print(f"      ~ {cand.name} — AppleDouble (śmieć macOS, pomijam)")
+                    continue
                 cls = classify(prod, cand.name)
                 if not cls:
                     continue
