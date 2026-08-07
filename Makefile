@@ -63,6 +63,8 @@ build-indexes: $(VENV)/bin/activate
 	@-$(PYTHON) scripts/build_tiny_index.py 2>/dev/null || echo "  Tiny index skipped (no archive)"
 	@-$(PYTHON) scripts/build_kgen_index.py 2>/dev/null || echo "  KGen index skipped (no archive)"
 	@-$(PYTHON) scripts/build_modarchive_index.py 2>/dev/null || echo "  ModArchive index skipped (no archive)"
+	@-$(PYTHON) scripts/build_party_index.py 2>/dev/null || echo "  Party index skipped (no archive)"
+	@-$(PYTHON) scripts/build_legacy_index.py 2>/dev/null || echo "  Legacy index skipped (no archive)"
 	@echo "Indexes built"
 
 clean:

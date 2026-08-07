@@ -9,11 +9,10 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
-from index_config import is_track_file, load_archive_root
+from index_config import is_track_file, load_archive_root, save_json_atomic
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVIUM = load_archive_root(ROOT_DIR) / "ay"
@@ -48,8 +47,7 @@ def main() -> None:
         total += count
 
     cache = {"version": 1, "total": total, "tracks": entries}
-    with open(OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2, ensure_ascii=False)
+    save_json_atomic(OUTPUT, cache)
     print(f"\n[DONE] Saved {total} tracks to {OUTPUT}")
 
 

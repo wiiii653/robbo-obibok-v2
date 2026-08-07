@@ -11,10 +11,11 @@ Uses parallel connections for speed.
 import asyncio
 import logging
 import os
+import zipfile
 from pathlib import Path
 
 import aiohttp
-from index_config import is_junk_path, load_archive_root
+from index_config import is_junk_path, load_archive_root, remove_junk_paths
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +32,8 @@ OUTDIR = os.environ.get(
 )
 CONCURRENT = 8  # downloads at a time
 TRACK_EXTENSIONS = {".mod", ".xm", ".it", ".s3m"}
+MAX_ARCHIVE_MEMBERS = 500
+MAX_ARCHIVE_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 
 # Directories to download (from the main page)
 SNAPSHOT_DIRS = [chr(i) for i in range(ord("0"), ord("9") + 1)] + [
@@ -67,6 +70,41 @@ def is_safe_download_name(name, extensions):
     return path.name == name and not is_junk_path(path) and path.suffix.lower() in extensions
 
 
+def _is_safe_archive_member(name: str) -> bool:
+    parts = name.replace("\\", "/").split("/")
+    return bool(name) and not name.startswith(("/", "\\")) and ".." not in parts
+
+
+def extract_zip(zip_path: Path) -> bool:
+    """Safely unpack a downloaded ZIP beside itself and remove the archive."""
+    destination = zip_path.with_suffix("")
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            infos = archive.infolist()
+            files = [info for info in infos if not info.is_dir()]
+            total_size = sum(info.file_size for info in files)
+            if (
+                len(files) > MAX_ARCHIVE_MEMBERS
+                or total_size > MAX_ARCHIVE_UNPACKED_BYTES
+                or any(
+                    info.file_size < 0 or not _is_safe_archive_member(info.filename)
+                    for info in infos
+                )
+            ):
+                log.warning("Refusing unsafe ZIP archive %s", zip_path)
+                return False
+            destination.mkdir(parents=True, exist_ok=True)
+            archive.extractall(destination)
+    except (OSError, zipfile.BadZipFile) as exc:
+        log.warning("Could not extract %s: %s", zip_path, exc)
+        return False
+
+    removed = remove_junk_paths(destination)
+    zip_path.unlink(missing_ok=True)
+    log.info("Extracted %s%s", zip_path.name, f"; removed {removed} junk paths" if removed else "")
+    return True
+
+
 async def fetch_url(session, url):
     """Fetch a URL and return text content."""
     try:
@@ -84,7 +122,7 @@ async def download_file(session, url, dest_path):
     if os.path.exists(dest_path):
         size = os.path.getsize(dest_path)
         if size > 1024:  # assume complete if > 1KB
-            return True
+            return extract_zip(Path(dest_path)) if dest_path.lower().endswith(".zip") else True
     try:
         async with semaphore:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=300)) as resp:
@@ -97,7 +135,7 @@ async def download_file(session, url, dest_path):
                 with open(dest_path, "wb") as f:
                     f.write(data)
                 log.info("Downloaded %s (%d bytes)", os.path.basename(dest_path), len(data))
-                return True
+                return extract_zip(Path(dest_path)) if dest_path.lower().endswith(".zip") else True
     except Exception as e:
         log.warning("Download failed %s: %s", url, e)
         return False

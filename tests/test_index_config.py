@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from index_config import is_junk_path, is_track_file, load_archive_root
+from index_config import is_junk_path, is_track_file, load_archive_root, save_json_atomic
 
 
 def test_archive_root_defaults_to_archiwum(tmp_path):
@@ -53,3 +54,15 @@ def test_is_track_file_requires_allowed_non_junk_nonempty_file(tmp_path):
     assert is_track_file(good, {"mod"})
     assert not is_track_file(junk, {"mod"})
     assert not is_track_file(text, {"mod"})
+
+
+def test_save_json_atomic_writes_complete_json_and_removes_temporary_file(tmp_path):
+    cache_path = tmp_path / "cache.json"
+    cache = {"version": 1, "tracks": [{"path": "music/test.mod", "size": 42}]}
+
+    save_json_atomic(cache_path, cache)
+
+    with cache_path.open(encoding="utf-8") as cache_file:
+        assert json.load(cache_file) == cache
+    assert not list(tmp_path.glob(".cache.json.*.tmp"))
+    assert not (tmp_path / "cache.json.corrupt").exists()
