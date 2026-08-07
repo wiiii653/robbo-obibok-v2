@@ -19,7 +19,7 @@ class Collection:
     color: int = 0x00FF00
 
 
-FLIP_ORDER: list[str] = ["hvsc", "asma", "modarchive", "ay", "ym", "tiny", "kgen"]
+FLIP_ORDER: list[str] = ["hvsc", "asma", "modarchive", "ay", "ym", "tiny", "kgen", "party"]
 
 COLLECTIONS: dict[str, Collection] = {
     "hvsc": Collection(
@@ -109,6 +109,32 @@ COLLECTIONS: dict[str, Collection] = {
         icon="🔊",
         footer="Keygen Music Radio",
         color=0xE74C3C,
+    ),
+    "party": Collection(
+        id="party",
+        name="Party Music (Compos)",
+        extensions=[
+            "sid",
+            "sap",
+            "ay",
+            "ym",
+            "mod",
+            "xm",
+            "it",
+            "s3m",
+            "med",
+            "dmf",
+            "nsf",
+            "vgm",
+            "vgz",
+        ],
+        archive_path="party",
+        cache_file="party_cache_local.json",
+        volume=100,
+        flip_tag="🎪PARTY",
+        icon="🎪",
+        footer="Party Music Radio",
+        color=0xE91E63,
     ),
 }
 
