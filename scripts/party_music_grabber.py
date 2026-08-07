@@ -157,6 +157,8 @@ def is_apple_double(path: Path) -> bool:
 
 def _download(url: str, dest: Path, retries: int = 3) -> bool:
     """Pobierz plik do dest (atomic). Zwraca True gdy OK."""
+    # modlandowe URL bywaja z surowymi spacjami — urllib ich nie znosi
+    url = _quote_url(url)
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": DEMOZOO_UA})
@@ -175,6 +177,16 @@ def _download(url: str, dest: Path, retries: int = 3) -> bool:
                 print(f"    ✗ download failed: {exc}")
             time.sleep(2 * (attempt + 1))
     return False
+
+
+def _quote_url(url: str) -> str:
+    """Zakoduj spacje (i inne niebezpieczne znaki) w sciezce URL."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        path = urllib.parse.quote(parsed.path)
+        return urllib.parse.urlunsplit(parsed._replace(path=path))
+    except ValueError:
+        return url
 
 
 # ------------------------------------------------------------- Demozoo ---
