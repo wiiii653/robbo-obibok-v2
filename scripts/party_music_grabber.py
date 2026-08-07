@@ -358,7 +358,11 @@ def process_production(
                 extract_dir = tmp_dir / "x"
                 if unpack_archive(raw, extract_dir):
                     for root, _dirs, files in os.walk(extract_dir):
+                        if "__MACOSX" in Path(root).parts:
+                            continue  # śmieci z macOS
                         for f in files:
+                            if f.startswith("._") or f.startswith("."):
+                                continue  # AppleDouble / dotfiles
                             if Path(f).suffix.lower().lstrip(".") in ACCEPTED_EXTS:
                                 candidates.append(Path(root) / f)
                 else:
