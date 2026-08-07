@@ -48,3 +48,15 @@ def test_stream_callback_only_removes_current_source(monkeypatch):
     assert manager.contains(123) is True
     assert manager.remove_if_current(123, source.source_id) is True
     assert manager.count == 0
+
+
+def test_start_handles_ffmpeg_start_error(monkeypatch):
+    monkeypatch.setattr(
+        "src.voice_streams.MonitorAudioSource", MagicMock(side_effect=OSError("ffmpeg"))
+    )
+    manager = VoiceStreamManager("robbo_bot", MagicMock())
+    voice_client = MagicMock()
+    voice_client.is_connected.return_value = True
+
+    assert manager.start(123, voice_client) is False
+    assert manager.count == 0

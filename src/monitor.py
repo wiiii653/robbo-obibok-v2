@@ -78,6 +78,8 @@ class TrackMonitor:
     _last_output: int = field(default=0, init=False, repr=False)
     _last_track: str = field(default="", init=False, repr=False)
     _cached_song_length: int = field(default=-1, init=False, repr=False)
+    _cached_total_time: int | None = field(default=None, init=False, repr=False)
+    _total_time_cached: bool = field(default=False, init=False, repr=False)
     _not_playing_since: float | None = field(default=None, init=False, repr=False)
     _empty_since: float | None = field(default=None, init=False, repr=False)
     _drop_confirmed_since: float | None = field(default=None, init=False, repr=False)
@@ -97,6 +99,8 @@ class TrackMonitor:
         self._last_output = 0
         self._last_track = ""
         self._cached_song_length = -1
+        self._cached_total_time = None
+        self._total_time_cached = False
         self._not_playing_since = None
         self._empty_since = None
         self._drop_confirmed_since = None
@@ -179,7 +183,7 @@ class TrackMonitor:
                 # True after playback stops. We don't gate on it — the grace
                 # period is enough to avoid false triggers from brief pauses.
                 still_loaded = False
-                grace = 2 if is_console_format(state.current_track) else 1
+                grace = 8 if is_console_format(state.current_track) else 1
                 should_advance, self._not_playing_since = should_advance_after_stop(
                     self._not_playing_since, now, grace, still_loaded=still_loaded
                 )
@@ -202,6 +206,8 @@ class TrackMonitor:
             self._last_track = track
             self._last_output = 0
             self._cached_song_length = -1
+            self._cached_total_time = None
+            self._total_time_cached = False
             self._drop_confirmed_since = None
             self._was_playing = False
             self._track_started_at = asyncio.get_running_loop().time()
@@ -249,25 +255,28 @@ class TrackMonitor:
                 self._cached_song_length = await self.audio.async_song_length()
             else:
                 self._cached_song_length = self.audio.song_length()
-        total = self._cached_song_length
+        # Header parsing and the audtool query done by total_*_time() may take
+        # seconds.  Calculate it once per track away from the Discord event
+        # loop, rather than doing it in every 0.25-second monitor tick.
+        if is_console and not self._total_time_cached:
+            self._total_time_cached = True
+            total_method = None
+            lower_track = track.lower()
+            if lower_track.endswith(".sap"):
+                total_method = getattr(self.audio, "total_sap_time", None)
+            elif lower_track.endswith(".ay"):
+                total_method = getattr(self.audio, "total_ay_time", None)
+            elif lower_track.endswith((".sid", ".psid", ".rsid")):
+                total_method = getattr(self.audio, "total_sid_time", None)
+            if total_method is not None:
+                self._cached_total_time = await asyncio.to_thread(total_method)
 
-        # For multi-subsong SAP files use total time from header
-        # The header TIME is more reliable than the reported player value
-        # for some SAP files.
-        if is_console and hasattr(self.audio, "total_sap_time"):
-            sap_total = self.audio.total_sap_time()
-            if sap_total is not None:
-                total = sap_total
-        # For multi-track AY files use total time from header
-        if is_console and hasattr(self.audio, "total_ay_time"):
-            ay_total = self.audio.total_ay_time()
-            if ay_total is not None and ay_total > total:
-                total = ay_total
-        # For multi-song SID files use total time from header
-        if is_console and hasattr(self.audio, "total_sid_time"):
-            sid_total = self.audio.total_sid_time()
-            if sid_total is not None and sid_total > total:
-                total = sid_total
+        total = self._cached_song_length
+        if self._cached_total_time is not None:
+            if track.lower().endswith(".sap"):
+                total = self._cached_total_time
+            else:
+                total = max(total, self._cached_total_time)
 
         if (
             track.lower().endswith(".sap")

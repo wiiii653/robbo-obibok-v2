@@ -45,14 +45,24 @@ class VoiceStreamManager:
             return False
 
         self.stop(guild_id)
-        source = MonitorAudioSource(sink_name=self._sink_name)
-        source_id = id(source)
-        source.source_id = source_id
-        voice_client.stop()
-        voice_client.play(
-            source,
-            after=lambda error: self._on_stream_end(guild_id, error, source_id),
-        )
+        source: MonitorAudioSource | None = None
+        try:
+            source = MonitorAudioSource(sink_name=self._sink_name)
+            source_id = id(source)
+            source.source_id = source_id
+            voice_client.stop()
+            voice_client.play(
+                source,
+                after=lambda error: self._on_stream_end(guild_id, error, source_id),
+            )
+        except Exception as exc:
+            logger.warning("start: could not start stream for guild %s: %s", guild_id, exc)
+            if source is not None:
+                try:
+                    source.cleanup()
+                except Exception:
+                    logger.debug("start: failed to clean up source for guild %s", guild_id)
+            return False
         self._streams[guild_id] = source
         return True
 

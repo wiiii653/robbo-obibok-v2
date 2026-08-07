@@ -684,6 +684,10 @@ class AudioController:
             return reported_total
         return None
 
+    async def async_total_sap_time(self) -> int | None:
+        """Return SAP total time without blocking the asyncio event loop."""
+        return await asyncio.to_thread(self.total_sap_time)
+
     def sap_has_loop(self) -> bool:
         fname = self._last_filepath or current_song_filename()
         return fname.lower().endswith(".sap") and _sap_has_loop(fname)
@@ -706,6 +710,10 @@ class AudioController:
             return None
         return per_subsong * (max_track + 1)
 
+    async def async_total_ay_time(self) -> int | None:
+        """Return AY total time without blocking the asyncio event loop."""
+        return await asyncio.to_thread(self.total_ay_time)
+
     def total_sid_time(self) -> int | None:
         """Return total playback time for multi-song SID, or None.
 
@@ -727,6 +735,10 @@ class AudioController:
         if per_subsong <= 0:
             return None
         return per_subsong * songs
+
+    async def async_total_sid_time(self) -> int | None:
+        """Return SID total time without blocking the asyncio event loop."""
+        return await asyncio.to_thread(self.total_sid_time)
 
     async def async_current_song(self) -> str:
         return await asyncio.to_thread(current_song)

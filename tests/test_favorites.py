@@ -2,13 +2,40 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+
+import pytest
 
 import src.favorites as favorites_module
 from src.favorites import Favorites, PlaylistLibrary
 
 
 class TestFavorites:
+    @pytest.mark.asyncio
+    async def test_async_add_uses_to_thread_and_instance_lock(self, tmp_path, monkeypatch):
+        favs = Favorites(str(tmp_path))
+        active_calls = 0
+        max_active_calls = 0
+
+        async def fake_to_thread(method, *args):
+            nonlocal active_calls, max_active_calls
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+            await asyncio.sleep(0)
+            try:
+                return method(*args)
+            finally:
+                active_calls -= 1
+
+        monkeypatch.setattr(favorites_module.asyncio, "to_thread", fake_to_thread)
+
+        results = await asyncio.gather(favs.async_add(1, "one.sap"), favs.async_add(1, "two.sap"))
+
+        assert results == [True, True]
+        assert max_active_calls == 1
+        assert [track["filepath"] for track in favs.get_tracks(1)] == ["one.sap", "two.sap"]
+
     def test_toggle_add(self, tmp_path):
         favs = Favorites(str(tmp_path))
         assert favs.toggle(1, "test.sap", "Test Song") is True

@@ -129,6 +129,28 @@ class TestTrackMonitor:
         assert len(ended) >= 1
 
     @pytest.mark.asyncio
+    async def test_console_not_playing_grace_is_eight_seconds(self, monkeypatch):
+        audio = type("MockAudio", (), {"is_playing": lambda self=None: False})()
+        monitor = TrackMonitor(audio=audio)
+        monitor._was_playing = True
+        monitor._not_playing_since = asyncio.get_running_loop().time()
+        state = type("State", (), {"is_playing": True, "current_track": "test.sid"})()
+        grace_values = []
+
+        def spy(not_playing_since, now, grace_seconds, **kwargs):
+            grace_values.append(grace_seconds)
+            return False, not_playing_since
+
+        monkeypatch.setattr("src.monitor.should_advance_after_stop", spy)
+
+        async def on_end(_state):
+            pytest.fail("console grace period should not advance immediately")
+
+        await monitor._tick(state, on_end, None, None)
+
+        assert grace_values == [8]
+
+    @pytest.mark.asyncio
     async def test_monitor_cancels(self):
         audio = type(
             "MockAudio",
@@ -209,6 +231,44 @@ class TestMonitorTickBranches:
 
         await monitor._tick(state, on_end, None, None)
         assert len(ended) >= 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("track", "method_name"),
+        [
+            ("test.sap", "total_sap_time"),
+            ("test.ay", "total_ay_time"),
+            ("test.sid", "total_sid_time"),
+        ],
+    )
+    async def test_total_console_time_is_cached_per_track(self, track, method_name):
+        calls = {"count": 0}
+
+        def total_time():
+            calls["count"] += 1
+            return 120
+
+        audio = type(
+            "MockAudio",
+            (),
+            {
+                "is_playing": lambda self=None: True,
+                "output_length": lambda self=None: 10,
+                "song_length": lambda self=None: 60,
+                method_name: staticmethod(total_time),
+            },
+        )()
+        monitor = TrackMonitor(audio=audio)
+        state = type("State", (), {"is_playing": True, "current_track": track})()
+
+        async def on_end(_state):
+            pytest.fail("track should not end")
+
+        await monitor._tick(state, on_end, None, None)
+        await monitor._tick(state, on_end, None, None)
+
+        assert calls["count"] == 1
+        assert monitor._cached_total_time == 120
 
     @pytest.mark.asyncio
     async def test_tick_output_reset_detection(self):
