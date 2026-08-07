@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,13 +35,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from index_config import is_track_file, load_archive_root, remove_junk_paths
+from party_music_grabber import _validate_archive_members
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 # Ścieżka archiwum z config.yaml (archive.path) — może być absolutna
 # (np. /home/boruta/robbo-music) albo względna; env ROBBO_ARCHIVIUM nadal
 # nadpisuje, gdy trzeba wskazać inny katalog bez ruszania configu.
-from index_config import is_track_file, load_archive_root, remove_junk_paths
-
 ARCHIVIUM = Path(os.environ.get("ROBBO_ARCHIVIUM", str(load_archive_root(PROJECT_ROOT))))
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
 
@@ -105,6 +107,10 @@ def download_file(url: str, dest: Path, expected: int | None = None) -> bool:
 
 def extract(archive: Path, dest: Path, strip: int = 0) -> bool:
     """Rozpakuj 7z/zip do dest. strip = ile pierwszych elementów ścieżki usunąć."""
+    members = _list_7z_members(archive)
+    if members is None or not _validate_archive_members(members):
+        log("  !! archiwum nie przeszło walidacji przed rozpakowaniem")
+        return False
     dest.mkdir(parents=True, exist_ok=True)
     cmd = ["7z", "x", "-y", f"-o{dest}", str(archive)]
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -117,6 +123,52 @@ def extract(archive: Path, dest: Path, strip: int = 0) -> bool:
     if removed:
         log(f"    usunięto {removed} ścieżek metadanych/pustych plików")
     return True
+
+
+def _list_7z_members(archive: Path) -> list[tuple[str, int]] | None:
+    """List and validate regular 7z members before allowing extraction."""
+    try:
+        res = subprocess.run(
+            ["7z", "l", "-slt", str(archive)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"  !! nie można sprawdzić archiwum: {exc}")
+        return None
+    if res.returncode != 0:
+        log(f"  !! 7z list fail: {res.stderr[-300:]}")
+        return None
+
+    listing = res.stdout.partition("----------")[2]
+    if not listing:
+        log("  !! 7z nie zwrócił listy członków")
+        return None
+    members: list[tuple[str, int]] = []
+    for block in listing.split("\n\n"):
+        values = dict(line.split(" = ", 1) for line in block.splitlines() if " = " in line)
+        if not values:
+            continue
+        name = values.get("Path")
+        attributes = values.get("Attributes", "")
+        if not name or not attributes:
+            log("  !! archiwum zawiera wpis bez pełnych metadanych")
+            return None
+        mode = attributes.split()[-1] if attributes.split() else ""
+        if any(key in values for key in ("Symbolic Link", "Hard Link", "Reparse Point")) or (
+            mode and mode[0] not in {"-", "d"}
+        ):
+            log(f"  !! archiwum zawiera link lub plik specjalny: {name}")
+            return None
+        try:
+            size = int(values.get("Size", "0"))
+        except ValueError:
+            log(f"  !! archiwum ma nieprawidłowy rozmiar wpisu: {name}")
+            return None
+        members.append((name, size))
+    return members
 
 
 def _strip_prefix(root: Path, strip: int) -> None:
@@ -158,22 +210,41 @@ def _has_music(dest: Path) -> bool:
     return False
 
 
+def _hvsc_package_path(dest: Path, filename: str) -> Path | None:
+    """Return a package path only when it remains below the HVSC destination."""
+    root = dest.resolve()
+    package = (root / filename).resolve()
+    return package if package.is_relative_to(root) else None
+
+
 def hvsc_plan() -> dict:
     """Najnowsza wersja HVSC z oficjalnego API + mirror (boswme.home.xs4all.nl nie żyje)."""
     api = json.loads(http_get("https://hvsc.c64.org/api/v1/version/7z").decode())
-    version = api["version"]
+    if not isinstance(api, dict):
+        log("  !! nieprawidłowa odpowiedź API HVSC")
+        return {}
+    version = str(api.get("version", ""))
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version):
+        log(f"  !! nieprawidłowa wersja HVSC z API: {version!r}")
+        return {}
     # oficjalny hosting XS4ALL został zamknięty — pliki serwuje mirror hvsc.brona.dk
     # (struktura katalogów ta sama: /HVSC/HVSC_<wersja>-all-of-them.7z)
     mirror_base = "https://hvsc.brona.dk"
     complete = f"{mirror_base}/HVSC/HVSC_{version}-all-of-them.7z"
     update = f"{mirror_base}/HVSC/HVSC_Update_{version}.7z"
-    local = ARCHIVIUM / "hvsc" / "C64Music"
+    dest = ARCHIVIUM / "hvsc"
+    complete_package = _hvsc_package_path(dest, f"HVSC_{version}-all-of-them.7z")
+    update_package = _hvsc_package_path(dest, f"HVSC_Update_{version}.7z")
+    if complete_package is None or update_package is None:
+        log("  !! niebezpieczna ścieżka pakietu HVSC")
+        return {}
+    local = dest / "C64Music"
     return {
         "name": "hvsc",
         "version": version,
         "complete_url": complete,
         "update_url": update,
-        "dest": ARCHIVIUM / "hvsc",
+        "dest": dest,
         "local_exists": local.exists(),
     }
 
@@ -202,6 +273,8 @@ def apply_hvsc_update(extract_dir: Path) -> int:
 
 def fetch_hvsc(dry: bool, check_only: bool, dest_override: Path | None) -> int:
     plan = hvsc_plan()
+    if not plan:
+        return 1
     dest = dest_override or plan["dest"]
     local_exists = (dest / "C64Music").exists()
     log(f"  HVSC wersja # {plan['version']}")
@@ -213,14 +286,20 @@ def fetch_hvsc(dry: bool, check_only: bool, dest_override: Path | None) -> int:
     if local_exists:
         # mamy pełną wersję — pobierz update (mniejsze)
         log("  mamy C64Music — pobieram update:")
-        pkg = dest / f"HVSC_Update_{plan['version']}.7z"
+        pkg = _hvsc_package_path(dest, f"HVSC_Update_{plan['version']}.7z")
+        if pkg is None:
+            log("  !! niebezpieczna ścieżka pakietu HVSC")
+            return 1
         if download_file(plan["update_url"], pkg):
             extract(pkg, dest / "C64Music")
             log("  update rozpakowany — wtapiam w C64Music/")
             apply_hvsc_update(dest / "C64Music")
         return 0
     log("  brak C64Music — pobieram pełną wersję (duży plik):")
-    pkg = dest / f"HVSC_{plan['version']}-all-of-them.7z"
+    pkg = _hvsc_package_path(dest, f"HVSC_{plan['version']}-all-of-them.7z")
+    if pkg is None:
+        log("  !! niebezpieczna ścieżka pakietu HVSC")
+        return 1
     if download_file(plan["complete_url"], pkg):
         extract(pkg, dest)
         log("  HVSC rozpakowany")
