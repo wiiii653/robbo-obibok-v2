@@ -31,10 +31,11 @@ from party_music_grabber import (
 )
 
 # Domyślne "wielkie" party (regex po nazwie). Wybierz wlasne przez --party-regex.
+# Silly Venture — atarowe party z Polski (SE/WE, 2x w roku).
 DEFAULT_PARTY_REGEX = (
     r"Assembly|Revision|The Gathering|Breakpoint|Evoke|Xenium|DiHalt|"
     r"Sommarhack|Lovebyte|Nova|MountainBytes|Stream|Datastorm|The Party|"
-    r"Codex Alimentarius|Birdie|Outline"
+    r"Codex Alimentarius|Birdie|Outline|Silly Venture"
 )
 
 
