@@ -308,8 +308,12 @@ def process_production(
     party_name: str,
     party_root: Path,
     dry: bool,
+    *,
+    legacy: bool = False,
 ) -> tuple[int, int]:
     """Pobiera/planuje pliki produkcji. Zwraca (pobrane, pominiete)."""
+    base = party_root / "legacy" if legacy else party_root
+    prefix = "legacy/" if legacy else ""
     links = prod.get("download_links", [])
     if not links:
         print(f"    {placement}. {prod.get('title')!r} — brak linków (pomijam)")
@@ -363,15 +367,15 @@ def process_production(
                 if not cls:
                     continue
                 sub, fname_out = cls
-                target = dedupe_path(party_root / sub / fname_out, cand.stat().st_size)
+                target = dedupe_path(base / sub / fname_out, cand.stat().st_size)
                 if target == Path():
-                    print(f"      = {sub}/{fname_out} (duplikat)")
+                    print(f"      = {prefix}{sub}/{fname_out} (duplikat)")
                     skip += 1
                     continue
                 if not dry:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(cand, target)
-                    print(f"      ✓ {sub}/{fname_out}")
+                    print(f"      ✓ {prefix}{sub}/{fname_out}")
                 ok += 1
     return ok, skip
 
