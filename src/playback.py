@@ -223,12 +223,12 @@ class PlaybackEngine:
         if normalized.startswith(col.archive_path + "/"):
             # cache path already includes the archive_path prefix
             # (e.g. party/c64/... from the party music grabber)
-            candidate = Path(self.root_dir) / self.archive_root / track
+            candidate = Path(self.root_dir) / self.archive_root / normalized
         elif len(archive_parts) > 1 and normalized.startswith(archive_parts[-1] + "/"):
             base = "/".join(archive_parts[:-1])
-            candidate = Path(self.root_dir) / self.archive_root / base / track
+            candidate = Path(self.root_dir) / self.archive_root / base / normalized
         else:
-            candidate = Path(self.root_dir) / self.archive_root / col.archive_path / track
+            candidate = Path(self.root_dir) / self.archive_root / col.archive_path / normalized
         root = (Path(self.root_dir) / self.archive_root).resolve()
         resolved = candidate.resolve()
         if not resolved.is_relative_to(root):
