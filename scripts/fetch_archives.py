@@ -331,13 +331,13 @@ def fetch_tiny(dry: bool, check_only: bool, dest_override: Path | None) -> int:
     if not script.exists() or not manifest.exists():
         log("  !! brak scripts/fetch_pouet_mods.py lub pouet_manifest.json")
         return 1
-    log("  Tiny: wywołuję fetch_pouet_mods.py (manifest pouet-demozoo):")
+    log("  Tiny/Pouet: wywołuję fetch_pouet_mods.py (manifest pouet-demozoo):")
     if dry or check_only:
         log("    (dry-run/check — bez pobierania)")
         return 0
     cmd = [sys.executable, str(script), "--manifest", str(manifest)]
-    # domyślny cel: archiwum/tiny/mods/pouet-demozoo (Tiny Music!)
-    dest = dest_override or (ARCHIVIUM / "tiny" / "mods" / "pouet-demozoo")
+    # domyślny cel: archiwum/pouet (Scena! — osobna kolekcja od 2026-08-07)
+    dest = dest_override or (ARCHIVIUM / "pouet")
     cmd += ["--dest", str(dest)]
     res = subprocess.run(cmd, timeout=60 * 60 * 2)
     return res.returncode
