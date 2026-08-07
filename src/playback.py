@@ -219,7 +219,12 @@ class PlaybackEngine:
             logger.warning("Unsafe track path rejected: %s", track)
             return None
         archive_parts = col.archive_path.split("/")
-        if len(archive_parts) > 1 and track.replace("\\", "/").startswith(archive_parts[-1] + "/"):
+        normalized = track.replace("\\", "/")
+        if normalized.startswith(col.archive_path + "/"):
+            # cache path already includes the archive_path prefix
+            # (e.g. party/c64/... from the party music grabber)
+            candidate = Path(self.root_dir) / self.archive_root / track
+        elif len(archive_parts) > 1 and normalized.startswith(archive_parts[-1] + "/"):
             base = "/".join(archive_parts[:-1])
             candidate = Path(self.root_dir) / self.archive_root / base / track
         else:
