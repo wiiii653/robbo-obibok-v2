@@ -127,6 +127,7 @@ COLLECTIONS: dict[str, Collection] = {
             "nsf",
             "vgm",
             "vgz",
+            "sndh",
         ],
         archive_path="party",
         cache_file="party_cache_local.json",

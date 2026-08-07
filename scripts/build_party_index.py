@@ -33,6 +33,7 @@ TRACK_EXTENSIONS = {
     "nsf",
     "vgm",
     "vgz",
+    "sndh",
 }
 
 
