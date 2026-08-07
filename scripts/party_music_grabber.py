@@ -364,7 +364,6 @@ def process_production(
                 else:
                     print("      ! archiwum nierozpakowane")
             for cand in candidates:
-                cext = cand.suffix.lower()
                 cls = classify(prod, cand.name)
                 if not cls:
                     continue
