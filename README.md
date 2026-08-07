@@ -15,7 +15,7 @@
 
 # Robbo Obibok v2 — The Ultimate Chiptune Bot
 
-Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-garde jazz band *Robotobibok*, this specialized Discord bot streams vintage retro chipmusic. Blending intricate technical grooves with retro charm, Robbo plays from **seven collections** spanning Atari, C64, ZX Spectrum, Amiga, demoscene keygens, and beyond.
+Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-garde jazz band *Robotobibok*, this specialized Discord bot streams vintage retro chipmusic. Blending intricate technical grooves with retro charm, Robbo plays from **eight collections** spanning Atari, C64, ZX Spectrum, Amiga, demoscene keygens, and party music compos.
 
 **Join a voice channel, type `!play`, and let the chips play.**
 
@@ -25,7 +25,7 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 
 ## Features
 
-- 🎵 **Seven collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~550), and KGen (demoscene keygen music, 4 800+)
+- 🎵 **Eight collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~680), KGen (demoscene keygen music, 4 800+), and Party Music (top-5 music compo results, grabbed monthly from Demozoo)
 - 🔀 **Shuffle loop** — never hear the same track twice in a row
 - 🎼 **Rich metadata** — track name, composer, copyright from headers
 - ❤️ **Favorites playlist** — react with ⭐ to a Now Playing embed to save/remove tracks
@@ -67,8 +67,9 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 | `!mod` / `!modarchive` / `!modules` | Switch to **ModArchive tracker modules** (~175 000) |
 | `!ay` / `!spectrum` / `!zx` | Switch to **ZX Spectrum AY** (~4 500) |
 | `!ym` / `!atarist` | Switch to **Atari ST YM** (~7 200) |
-| `!tiny` / `!tm` | Switch to **Tiny Music modules** (~550) |
+| `!tiny` / `!tm` | Switch to **Tiny Music modules** (~680) |
 | `!kgen` / `!keygen` / `!k` | Switch to **Keygen Music** (~4 800) |
+| `!party` / `!compo` | Switch to **Party Music** (top-5 music compos z Demozoo) |
 | **Favorites & Blacklist** | |
 | `!favorites` / `!favs` | Show your reaction-based favorites playlist |
 | `!favplay` / `!fp` | Play favorites in shuffle mode |
@@ -98,8 +99,9 @@ React with **⭐ (star)** to a Now Playing embed to save the track to your favor
 | **AY** | `.ay` | 43 480 | Local `archiwum/ay/` |
 | **YM** | `.ym` | 7 427 | Local `archiwum/ym/` |
 | **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 79 408 | Local `archiwum/modarchive/` |
-| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 548 | Local `archiwum/tiny/` |
+| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 682 | Local `archiwum/tiny/` |
 | **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 5 546 | Local `archiwum/kgen/` |
+| **Party Music** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, trackery | ~26 | Local `archiwum/party/` (grabber: top-5 music compos z Demozoo, cron 7. dnia miesiąca) |
 
 All collections are served from disk.
 
@@ -192,22 +194,24 @@ RUN_INTEGRATION=1 venv/bin/pytest -m integration
 
 ## Native input plugins (`plugins/`)
 
-The bot plays YM (Atari ST) and SAP (Atari) through custom native Audacious
-input plugins, vendored in this repo:
+The bot plays YM (Atari ST), SAP (Atari), and SNDH (Atari ST music archive)
+through custom native Audacious input plugins, vendored in this repo:
 
 | Plugin | Format | Decoder | Source |
 |--------|--------|---------|--------|
 | `plugins/ym` | `.ym` (YM5/YM6, LHa `-lh5-`) | ST-Sound | `ym.cc` + `vendor/stsound/StSoundLibrary/` |
 | `plugins/sap` | `.sap` (all types A–E, S, dual-POKEY) | ASAP 8.0.0 | `sap.cc` + `vendor/asap-8.0.0/` |
+| `plugins/sndh` | `.sndh` / `.snd` (SNDH, ICE!/LZH-compressed) | sc68 | `sndh.cc` + `vendor_sc68/` |
 
-Stock Audacious/GME cannot play YM at all (libgme never supported YM2149) and
-fails on SAP TYPE D/E (POKEY register range overlaps GME's 6502 stub); the
-native plugins close both gaps. Build them (requires `libaudcore-dev` +
-`libaudtag-dev`):
+Stock Audacious/GME cannot play YM at all (libgme never supported YM2149),
+fails on SAP TYPE D/E (POKEY register range overlaps GME's 6502 stub), and has
+no SNDH player; the native plugins close all three gaps. Build them (requires
+`libaudcore-dev` + `libaudtag-dev`, autotools for the sc68 bootstrap):
 
 ```bash
 cd plugins/ym && ./build.sh     # → ym.so
 cd ../sap && ./build.sh         # → sap.so
+cd ../sndh && ./build.sh        # → sndh.so
 ```
 
 The build script also compiles a standalone render harness (`test_stsound` /
