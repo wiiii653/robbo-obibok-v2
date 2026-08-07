@@ -28,7 +28,6 @@ from party_music_grabber import (
     fetch_prod_detail,
     get_music_placements,
     process_production,
-    rebuild_cache,
 )
 
 # Domyślne "wielkie" party (regex po nazwie). Wybierz wlasne przez --party-regex.
@@ -60,8 +59,9 @@ def main() -> int:
     args = ap.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
-    party_root = load_archive_root(root_dir) / "party"
-    cache_path = root_dir / "party_cache_local.json"
+    # Legacy = OSOBNA kolekcja (od 2026-08-07): katalog archiwum/legacy,
+    # cache legacy_cache_local.json — nie party/legacy
+    legacy_root = load_archive_root(root_dir) / "legacy"
 
     print(
         f"== Party Legacy Grabber | party: {args.party_regex!r} | top={args.top} | od {args.since_year} =="
@@ -96,7 +96,7 @@ def main() -> int:
                 print("    (brak szczegolow produkcji)")
                 continue
             ok, sk = process_production(
-                pdetail, compo, placement, pname, party_root, args.dry_run, legacy=True
+                pdetail, compo, placement, pname, legacy_root, args.dry_run, legacy=False
             )
             downloaded += ok
             skipped += sk
@@ -106,7 +106,12 @@ def main() -> int:
         f"\n== Wynik: {downloaded} plików {'w planie' if args.dry_run else 'pobranych'}, {skipped} pominiętych =="
     )
     if not args.dry_run and not args.no_cache_rebuild:
-        rebuild_cache(party_root, cache_path)
+        # Legacy cache buduje build_legacy_index.py (ścieżki bez prefiksu)
+        import subprocess
+
+        subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "build_legacy_index.py")]
+        )
     return 0
 
 

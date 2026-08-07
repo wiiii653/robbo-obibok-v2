@@ -20,7 +20,7 @@ from src.models import COLLECTIONS, FLIP_ORDER
 
 class TestCollectionRegistry:
     def test_all_collections_registered(self):
-        assert len(COLLECTIONS) == 9
+        assert len(COLLECTIONS) == 10
         for col_id in FLIP_ORDER:
             assert col_id in COLLECTIONS
 
@@ -72,7 +72,8 @@ class TestFlipCollection:
         assert flip_collection("hvsc") == "asma"
         assert flip_collection("asma") == "modarchive"
         assert flip_collection("kgen") == "party"
-        assert flip_collection("party") == "hvsc"
+        assert flip_collection("party") == "legacy"
+        assert flip_collection("legacy") == "hvsc"
 
 
 class TestLoadRawPaths:

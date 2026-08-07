@@ -140,6 +140,9 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     # Party collection (party music grabber, archiwum/party/<platform>/)
     if "/party/" in "/" + filepath.replace("\\", "/"):
         return "party"
+    # Party Legacy collection (archiwum/legacy/<platform>/)
+    if "/legacy/" in "/" + filepath.replace("\\", "/"):
+        return "legacy"
 
     # Unambiguous extensions
     extension_map = {
