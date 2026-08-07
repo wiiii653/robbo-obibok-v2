@@ -138,7 +138,7 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     if "/ym_ogg/" in filepath.replace("\\", "/"):
         return "ym"
     # Party collection (party music grabber, archiwum/party/<platform>/)
-    if "/party/" in filepath.replace("\\", "/"):
+    if "/party/" in "/" + filepath.replace("\\", "/"):
         return "party"
 
     # Unambiguous extensions

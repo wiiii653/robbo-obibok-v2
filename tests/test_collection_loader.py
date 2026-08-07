@@ -45,6 +45,18 @@ class TestCollectionRegistry:
     def test_resolves_ym_case_insensitively(self, filepath):
         assert resolve_collection_for_filepath(filepath) == "ym"
 
+    @pytest.mark.parametrize(
+        "filepath",
+        [
+            "party/c64/Song.sid",
+            "party/pc/song.xm",
+            "archiwum/party/c64/Song.sid",
+            "party/amiga/song.mod",
+        ],
+    )
+    def test_resolves_party_paths(self, filepath):
+        assert resolve_collection_for_filepath(filepath) == "party"
+
 
 class TestFlipCollection:
     def test_flip_cycle(self):
