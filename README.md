@@ -25,7 +25,7 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 
 ## Features
 
-- 🎵 **Eight collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~680), KGen (demoscene keygen music, 4 800+), and Party Music (top-5 music compo results, grabbed monthly from Demozoo)
+- 🎵 **Eight collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~680), KGen (demoscene keygen music, 4 800+), and Party Music (top-5 music compo results grabbed monthly from Demozoo + historyczny sweep top-3 od 1990, 1 270 tracków)
 - 🔀 **Shuffle loop** — never hear the same track twice in a row
 - 🎼 **Rich metadata** — track name, composer, copyright from headers
 - ❤️ **Favorites playlist** — react with ⭐ to a Now Playing embed to save/remove tracks
@@ -101,7 +101,7 @@ React with **⭐ (star)** to a Now Playing embed to save the track to your favor
 | **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 79 408 | Local `archiwum/modarchive/` |
 | **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 682 | Local `archiwum/tiny/` |
 | **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 5 546 | Local `archiwum/kgen/` |
-| **Party Music** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, trackery | ~26 | Local `archiwum/party/` (grabber: top-5 music compos z Demozoo, cron 7. dnia miesiąca) |
+| **Party Music** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, `.nsf`, `.vgm`, trackery | 1 270 | Local `archiwum/party/` — comiesięczny grabber (top-5 compo, cron 7. dnia) + **legacy sweep** (top-3, wielkie party, pełna historia do 1990) |
 
 All collections are served from disk.
 

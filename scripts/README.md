@@ -72,6 +72,16 @@ python3 party_legacy_grabber.py --top 3
 python3 party_music_grabber.py --dry-run --window-days 12
 ```
 
+Wyniki z 2026-08-07: legacy sweep zebrał **1212 plików** (1990–2026,
+`archiwum/party/legacy/<platform>/`), comiesięczny 41 — kolekcja `!party`
+ma **1270 tracków**.
+
+Pułapki (załata 2026-08-07):
+- **AppleDouble** (`._*` w `__MACOSX/` z zipów scene.org) — odsiewane 3
+  warstwami: skip `._*`/dotfiles, skip `__MACOSX/`, magic `00 05 16 07`.
+- **modland URL ze spacjami** — `_quote_url()` przed pobraniem.
+- **martwe linki scene.org** — raportowane (`✗ download failed`) i pomijane.
+
 Wrapper crona: `~/.hermes/scripts/party_music_grabber.sh` (TMPDIR na dysku).
 
 ## Budowanie indeksów — `build_*_index.py`
