@@ -137,6 +137,19 @@ def _strip_prefix(root: Path, strip: int) -> None:
 # ── definicje archiwów ────────────────────────────────────────────────
 
 
+def _has_music(dest: Path) -> bool:
+    """Czy katalog docelowy zawiera rozpakowane pliki muzyczne (nie samo archiwum)."""
+    if not dest.is_dir():
+        return False
+    try:
+        for p in dest.rglob("*"):
+            if p.is_file() and p.suffix.lower().lstrip(".") in MUSIC_EXTS:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def hvsc_plan() -> dict:
     """Najnowsza wersja HVSC z oficjalnego API + mirror (boswme.home.xs4all.nl nie żyje)."""
     api = json.loads(http_get("https://hvsc.c64.org/api/v1/version/7z").decode())
@@ -210,7 +223,7 @@ def fetch_asma(dry: bool, check_only: bool, dest_override: Path | None) -> int:
     url = "https://asma.atari.org/asmadb/asma.zip"
     dest = dest_override or (ARCHIVIUM / "asma")
     size = http_size(url)
-    log(f"  ASMA: {url} ({size:,} B)")
+    log(f"  ASMA: {url} ({size:,} B, lokalnie: {_has_music(dest)})")
     if dry or check_only:
         return 0
     pkg = dest / "asma.zip"
@@ -225,11 +238,31 @@ AY_PACKAGES = [
     ("Tr_Songs.7z", "ay/tr_songs", 0),
     ("bulba_ay.7z", "ay/bulba", 0),
     ("ifist_ay.zip", "ay/ironfist", 0),
-    ("YM.7z", "ym/ym", 0),
+    ("YM.7z", "ym/bulba_1997", 0),
     ("YM_Archive_v5.7z", "ym/bulba_v5", 0),
-    ("VtxYmEtc.7z", "ym/vtx", 0),
+    ("VtxYmEtc.7z", "ym/vtx_etc", 0),
     ("faveym.7z", "ym/faveym", 0),
 ]
+
+# Rozszerzenia muzyczne, które Robbo gra — służą do oceny, czy katalog
+# docelowy ma rozpakowane dane (a nie tylko leżące archiwum).
+MUSIC_EXTS = {
+    "sid",
+    "sap",
+    "ay",
+    "ym",
+    "snd",
+    "sndh",
+    "nsf",
+    "vgm",
+    "vgz",
+    "mod",
+    "xm",
+    "it",
+    "s3m",
+    "med",
+    "dmf",
+}
 
 
 def fetch_ay(dry: bool, check_only: bool, dest_override: Path | None) -> int:
@@ -240,7 +273,8 @@ def fetch_ay(dry: bool, check_only: bool, dest_override: Path | None) -> int:
         dest = dest_root / rel
         size = http_size(url)
         local = dest / fname
-        log(f"  {fname}: {size:,} B -> {dest} (jest: {local.exists()})")
+        has_data = _has_music(dest)
+        log(f"  {fname}: {size:,} B -> {dest} (dane: {has_data}, archiwum: {local.exists()})")
         if dry or check_only:
             continue
         if local.exists():
@@ -258,7 +292,7 @@ def fetch_kgen(dry: bool, check_only: bool, dest_override: Path | None) -> int:
     dest = dest_override or (ARCHIVIUM / "kgen")
     size = http_size(url)
     size_txt = f"{size:,} B" if size else "nieznany"
-    log(f"  KGen: {url} ({size_txt})")
+    log(f"  KGen: {url} ({size_txt}, lokalnie: {_has_music(dest)})")
     if dry or check_only:
         return 0
     pkg = dest / "keygen-music-pack.zip"
