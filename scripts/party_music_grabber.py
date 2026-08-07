@@ -375,7 +375,7 @@ def process_production(
                 if not dry:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(cand, target)
-                    print(f"      ✓ {prefix}{sub}/{fname_out}")
+                    print(f"      ✓ {prefix}{sub}/{target.name}")
                 ok += 1
     return ok, skip
 
