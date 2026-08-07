@@ -104,6 +104,10 @@ class CollectionCog(commands.Cog):
     async def party(self, ctx: commands.Context) -> None:
         await self._switch(ctx, "party")
 
+    @commands.command(aliases=["historia", "compo-history"])
+    async def legacy(self, ctx: commands.Context) -> None:
+        await self._switch(ctx, "legacy")
+
     async def _switch(self, ctx: commands.Context, collection_id: str) -> None:
         if not ctx.guild:
             return
