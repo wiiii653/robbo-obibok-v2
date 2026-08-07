@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from index_config import load_archive_root
+from index_config import is_track_file, load_archive_root
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVIUM = load_archive_root(ROOT_DIR) / "ym"
@@ -37,7 +37,7 @@ def main() -> None:
             print(f"[SKIP] {subdir} — directory not found")
             continue
         # Case-insensitive: collection has mixed .ym / .YM (bulba_1997, faveym, vtx_etc).
-        files = sorted(d.rglob("*.[yY][mM]"))
+        files = [path for path in sorted(d.rglob("*")) if is_track_file(path, {"ym"})]
         count = 0
         for f in files:
             rel = str(f.relative_to(ARCHIVIUM))

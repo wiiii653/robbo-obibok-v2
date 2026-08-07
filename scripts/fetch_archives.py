@@ -39,7 +39,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 # Ścieżka archiwum z config.yaml (archive.path) — może być absolutna
 # (np. /home/boruta/robbo-music) albo względna; env ROBBO_ARCHIVIUM nadal
 # nadpisuje, gdy trzeba wskazać inny katalog bez ruszania configu.
-from index_config import load_archive_root
+from index_config import is_track_file, load_archive_root, remove_junk_paths
 
 ARCHIVIUM = Path(os.environ.get("ROBBO_ARCHIVIUM", str(load_archive_root(PROJECT_ROOT))))
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
@@ -113,6 +113,9 @@ def extract(archive: Path, dest: Path, strip: int = 0) -> bool:
         return False
     if strip > 0:
         _strip_prefix(dest, strip)
+    removed = remove_junk_paths(dest)
+    if removed:
+        log(f"    usunięto {removed} ścieżek metadanych/pustych plików")
     return True
 
 
@@ -148,7 +151,7 @@ def _has_music(dest: Path) -> bool:
         return False
     try:
         for p in dest.rglob("*"):
-            if p.is_file() and p.suffix.lower().lstrip(".") in MUSIC_EXTS:
+            if is_track_file(p, MUSIC_EXTS):
                 return True
     except OSError:
         return False

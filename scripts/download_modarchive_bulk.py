@@ -11,8 +11,10 @@ Uses parallel connections for speed.
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 import aiohttp
+from index_config import is_junk_path, load_archive_root
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,9 +27,10 @@ BASE = "http://modarchive.textfiles.com"
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTDIR = os.environ.get(
     "MODARCHIVE_BULK_OUTDIR",
-    os.path.join(_SCRIPT_DIR, "..", "archiwum", "modarchive_textfiles"),
+    str(load_archive_root(Path(_SCRIPT_DIR).parent) / "modarchive"),
 )
 CONCURRENT = 8  # downloads at a time
+TRACK_EXTENSIONS = {".mod", ".xm", ".it", ".s3m"}
 
 # Directories to download (from the main page)
 SNAPSHOT_DIRS = [chr(i) for i in range(ord("0"), ord("9") + 1)] + [
@@ -58,6 +61,12 @@ ADDITIONS_DIRS = [
 semaphore = asyncio.Semaphore(CONCURRENT)
 
 
+def is_safe_download_name(name, extensions):
+    """Accept only plain, non-junk filenames with an expected extension."""
+    path = Path(name)
+    return path.name == name and not is_junk_path(path) and path.suffix.lower() in extensions
+
+
 async def fetch_url(session, url):
     """Fetch a URL and return text content."""
     try:
@@ -82,6 +91,9 @@ async def download_file(session, url, dest_path):
                 if resp.status != 200:
                     return False
                 data = await resp.read()
+                if not data:
+                    log.warning("Empty download %s", url)
+                    return False
                 with open(dest_path, "wb") as f:
                     f.write(data)
                 log.info("Downloaded %s (%d bytes)", os.path.basename(dest_path), len(data))
@@ -101,7 +113,11 @@ async def download_snapshot_dir(session, letter):
 
     import re
 
-    zip_files = re.findall(r'href="([^"]+\.zip)"', html)
+    zip_files = [
+        name
+        for name in re.findall(r'href="([^"]+\.zip)"', html, flags=re.IGNORECASE)
+        if is_safe_download_name(name, {".zip"})
+    ]
     if not zip_files:
         log.info("No zips in %s/", letter)
         return
@@ -131,7 +147,11 @@ async def download_additions_dir(session, dirname):
     subdirs = re.findall(r'href="([A-Z0-9]+)/"', html)
     if not subdirs:
         # Maybe it has zip files directly (like addendum1)
-        zip_files = re.findall(r'href="([^"]+\.zip)"', html)
+        zip_files = [
+            name
+            for name in re.findall(r'href="([^"]+\.zip)"', html, flags=re.IGNORECASE)
+            if is_safe_download_name(name, {".zip"})
+        ]
         if zip_files:
             tasks = []
             for zf in zip_files:
@@ -150,7 +170,7 @@ async def download_additions_dir(session, dirname):
         if not sub_html:
             continue
         files = re.findall(r'href="([^"]+)"', sub_html)
-        files = [f for f in files if not f.endswith("/") and f != ".."]
+        files = [f for f in files if is_safe_download_name(f, TRACK_EXTENSIONS)]
         if not files:
             continue
         tasks = []

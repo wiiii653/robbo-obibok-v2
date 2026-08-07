@@ -39,6 +39,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from index_config import is_junk_path, is_track_file
+
 MODLAND_HOST = "ftp.modland.com"
 MODLAND_BASE = "/pub/modules"
 
@@ -202,7 +204,7 @@ def build_manifest(root: Path) -> dict:
     ):
         files = []
         for f in sorted(artist_dir.iterdir()):
-            if f.is_file() and f.suffix.lower() in TRACK_EXTS:
+            if is_track_file(f, TRACK_EXTS):
                 files.append(decode_name(f.name))
         if files:
             manifest["artists"].append({"name": artist_dir.name, "files": files})
@@ -211,9 +213,7 @@ def build_manifest(root: Path) -> dict:
             p for p in artist_dir.iterdir() if p.is_dir() and not p.name.startswith(".")
         ):
             sub_files = [
-                decode_name(f.name)
-                for f in sorted(sub.iterdir())
-                if f.is_file() and f.suffix.lower() in TRACK_EXTS
+                decode_name(f.name) for f in sorted(sub.iterdir()) if is_track_file(f, TRACK_EXTS)
             ]
             if sub_files:
                 manifest["artists"].append(
@@ -253,6 +253,10 @@ def run_manifest(
             else:
                 artist_fmt = file_format(a["files"][0]) if a["files"] else None
         for fname in a["files"]:
+            candidate = Path(fname)
+            if is_junk_path(candidate) or candidate.suffix.lower() not in TRACK_EXTS:
+                logger(f"  !! pomijam {a['name']}/{fname}: śmieci lub nieznany format")
+                continue
             fmt = artist_fmt or file_format(fname)
             if not fmt:
                 logger(f"  !! pomijam {a['name']}/{fname}: nieznany format")
@@ -261,7 +265,11 @@ def run_manifest(
             remote = remote_path(a, fname, base, fmt)
             tasks.append(("ftp", remote, dest))
     for d in manifest.get("direct", []):
-        dest = dest_root / d["dest"]
+        destination = Path(d["dest"])
+        if is_junk_path(destination) or destination.suffix.lower() not in TRACK_EXTS:
+            logger(f"  !! pomijam {d['dest']}: śmieci lub nieznany format")
+            continue
+        dest = dest_root / destination
         tasks.append(("http", d["url"], dest))
 
     if dry or check_only:

@@ -43,7 +43,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from index_config import load_archive_root
+from index_config import is_track_file, load_archive_root
 
 DEMOZOO_UA = "curl/8.5.0"  # UA, ktory przechodzi przez Cloudflare na demozoo.org
 DEMOZOO_API = "https://demozoo.org/api/v1"
@@ -572,18 +572,15 @@ def process_production(
                     extract_dir = tmp_dir / "x"
                     if unpack_archive(raw, extract_dir):
                         for root, _dirs, files in os.walk(extract_dir):
-                            if "__MACOSX" in Path(root).parts:
-                                continue  # śmieci z macOS
                             for f in files:
-                                if f.startswith("._") or f.startswith("."):
-                                    continue  # AppleDouble / dotfiles
-                                if Path(f).suffix.lower().lstrip(".") in ACCEPTED_EXTS:
-                                    candidates.append(Path(root) / f)
+                                candidate = Path(root) / f
+                                if is_track_file(candidate, ACCEPTED_EXTS):
+                                    candidates.append(candidate)
                     else:
                         print("      ! archiwum nierozpakowane")
                 for cand in candidates:
-                    if is_apple_double(cand):
-                        print(f"      ~ {cand.name} — AppleDouble (śmieć macOS, pomijam)")
+                    if not is_track_file(cand, ACCEPTED_EXTS) or is_apple_double(cand):
+                        print(f"      ~ {cand.name} — niegrywalny lub AppleDouble (pomijam)")
                         continue
                     cls = classify(prod, cand.name)
                     if not cls:
@@ -607,9 +604,8 @@ def rebuild_cache(party_root: Path, cache_path: Path) -> None:
     entries: list[dict] = []
     for root, _dirs, files in os.walk(party_root):
         for f in sorted(files):
-            ext = Path(f).suffix.lower().lstrip(".")
-            if ext in ACCEPTED_EXTS:
-                full = Path(root) / f
+            full = Path(root) / f
+            if is_track_file(full, ACCEPTED_EXTS):
                 rel = str(full.relative_to(party_root.parent))
                 entries.append({"path": rel, "name": Path(f).stem, "size": os.path.getsize(full)})
     cache = {"version": 1, "total": len(entries), "tracks": entries}

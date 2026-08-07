@@ -15,7 +15,7 @@ import json
 import os
 from pathlib import Path
 
-from index_config import load_archive_root
+from index_config import is_track_file, load_archive_root
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVIUM = load_archive_root(ROOT_DIR) / "hvsc" / "C64Music"
@@ -32,8 +32,7 @@ def main() -> None:
         if not d.exists():
             print(f"[SKIP] {subdir}/ — directory not found")
             continue
-        files = sorted(d.rglob("*.sid"))
-        files += sorted(d.rglob("*.SID"))
+        files = [path for path in sorted(d.rglob("*")) if is_track_file(path, {"sid"})]
         seen: set[str] = set()
         unique_files = []
         for f in files:
