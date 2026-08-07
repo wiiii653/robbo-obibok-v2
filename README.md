@@ -15,7 +15,7 @@
 
 # Robbo Obibok v2 — The Ultimate Chiptune Bot
 
-Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-garde jazz band *Robotobibok*, this specialized Discord bot streams vintage retro chipmusic. Blending intricate technical grooves with retro charm, Robbo plays from **eight collections** spanning Atari, C64, ZX Spectrum, Amiga, demoscene keygens, and party music compos.
+Named after a fusion of the 1989 Polish Atari classic *Robbo* and the avant-garde jazz band *Robotobibok*, this specialized Discord bot streams vintage retro chipmusic. Blending intricate technical grooves with retro charm, Robbo plays from **ten collections** spanning Atari, C64, ZX Spectrum, Amiga, demoscene keygens, party music compos, and their historical legacy.
 
 **Join a voice channel, type `!play`, and let the chips play.**
 
@@ -25,7 +25,7 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 
 ## Features
 
-- 🎵 **Eight collections** — switch between ASMA (Atari SAP, 6 300+), HVSC (C64 SID, 60 000+), AY (ZX Spectrum, 4 500+), YM (Atari ST, 6 900+), ModArchive (Amiga/PC tracker modules, 225 000+), Tiny Music modules (~680), KGen (demoscene keygen music, 4 800+), and Party Music (top-5 music compo results grabbed monthly from Demozoo + historyczny sweep top-3 od 1990, 1 270 tracków)
+- 🎵 **Ten collections** — switch between ASMA (Atari SAP, 6 335), HVSC (C64 SID, 60 971), AY (ZX Spectrum, 43 480), YM (Atari ST, 7 427), ModArchive (Amiga/PC tracker modules, 79 408), Tiny Music modules (422), KGen (demoscene keygen music, 5 546), Party Music (fresh compo, 57), Party Legacy (compo history 1990+, 1 214), and Scena/Pouet (demoscene artists, 399)
 - 🔀 **Shuffle loop** — never hear the same track twice in a row
 - 🎼 **Rich metadata** — track name, composer, copyright from headers
 - ❤️ **Favorites playlist** — react with ⭐ to a Now Playing embed to save/remove tracks
@@ -62,14 +62,16 @@ Complete rewrite with a focused architecture — small domain modules, Discord c
 | `!flip` / `!switch` / `!toggle` / `!fl` | Rotate through all available collections |
 | `!status` / `!mode` / `!collection` | Show current collection and queue info |
 | `!search <query>` | Search tracks by name, directory, or author |
-| `!hvsc` / `!c64` / `!sid` | Switch to **Commodore 64 SID** (~60 500) |
-| `!asma` | Switch to **Atari SAP** (~6 300) |
-| `!mod` / `!modarchive` / `!modules` | Switch to **ModArchive tracker modules** (~175 000) |
-| `!ay` / `!spectrum` / `!zx` | Switch to **ZX Spectrum AY** (~4 500) |
-| `!ym` / `!atarist` | Switch to **Atari ST YM** (~7 200) |
-| `!tiny` / `!tm` | Switch to **Tiny Music modules** (~680) |
-| `!kgen` / `!keygen` / `!k` | Switch to **Keygen Music** (~4 800) |
-| `!party` / `!compo` | Switch to **Party Music** (top-5 music compos z Demozoo) |
+| `!hvsc` / `!c64` / `!sid` | Switch to **Commodore 64 SID** (60 971) |
+| `!asma` | Switch to **Atari SAP** (6 335) |
+| `!mod` / `!modarchive` / `!modules` | Switch to **ModArchive tracker modules** (79 408) |
+| `!ay` / `!spectrum` / `!zx` | Switch to **ZX Spectrum AY** (43 480) |
+| `!ym` / `!atarist` | Switch to **Atari ST YM** (7 427) |
+| `!tiny` / `!tm` | Switch to **Tiny Music modules** (422) |
+| `!pouet` / `!scena` / `!demoscene` | Switch to **Scena (Pouet/Demozoo)** modules (399) |
+| `!kgen` / `!keygen` / `!k` | Switch to **Keygen Music** (5 546) |
+| `!party` / `!compo` | Switch to **Party Music** (fresh compo, 57) |
+| `!legacy` / `!historia` | Switch to **Party Legacy** (compo history, 1 214) |
 | **Favorites & Blacklist** | |
 | `!favorites` / `!favs` | Show your reaction-based favorites playlist |
 | `!favplay` / `!fp` | Play favorites in shuffle mode |
@@ -94,14 +96,16 @@ React with **⭐ (star)** to a Now Playing embed to save the track to your favor
 
 | Collection | Format | Tracks (lokalnie) | Source |
 |------------|--------|-------------------|--------|
-| **ASMA** | `.sap` | 6 335 | Local `archiwum/asma/` |
-| **HVSC** | `.sid` | 60 971 | Local `archiwum/hvsc/C64Music/` |
-| **AY** | `.ay` | 43 480 | Local `archiwum/ay/` |
-| **YM** | `.ym` | 7 427 | Local `archiwum/ym/` |
-| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 79 408 | Local `archiwum/modarchive/` |
-| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 682 | Local `archiwum/tiny/` |
-| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 5 546 | Local `archiwum/kgen/` |
-| **Party Music** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, `.nsf`, `.vgm`, trackery | 1 270 | Local `archiwum/party/` — comiesięczny grabber (top-5 compo, cron 7. dnia) + **legacy sweep** (top-3, wielkie party, pełna historia do 1990) |
+| **ASMA** | `.sap` | 6 335 | Local `robbo-music/asma/` |
+| **HVSC** | `.sid` | 60 971 | Local `robbo-music/hvsc/C64Music/` |
+| **AY** | `.ay` | 43 480 | Local `robbo-music/ay/` |
+| **YM** | `.ym` | 7 427 | Local `robbo-music/ym/` |
+| **ModArchive** | `.mod`, `.xm`, `.s3m`, `.it` | 79 408 | Local `robbo-music/modarchive/` |
+| **Tiny Music** | `.mod`, `.xm`, `.s3m`, `.it` | 422 | Local `robbo-music/tiny/` (artists) |
+| **Scena (Pouet/Demozoo)** | `.mod`, `.xm`, `.s3m`, `.it` | 399 | Local `robbo-music/pouet/` — tłuściochy z manifestu, osobna kolekcja od 2026-08-07 |
+| **KGen** | `.mod`, `.xm`, `.s3m`, `.it` | 5 546 | Local `robbo-music/kgen/` |
+| **Party Music** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, `.nsf`, `.vgm`, trackery | 57 | Local `robbo-music/party/` — **cotygodniowy** grabber (top-5 compo, cron niedziela 06:00) |
+| **Party Legacy** | `.sid`, `.sap`, `.ay`, `.ym`, `.sndh`, `.nsf`, `.vgm`, trackery | 1 214 | Local `robbo-music/legacy/` — historyczny sweep (top-3, wielkie party, pełna historia do 1990); osobna kolekcja od 2026-08-07 |
 
 All collections are served from disk.
 
@@ -116,7 +120,7 @@ All archives can be fetched and updated with one script:
 ```
 
 See `scripts/README.md` for sources and details (HVSC mirror, ASMA zip, AY/YM from
-ay.strangled.net, KGen GitHub mirror, Tiny pouet-demozoo manifest).
+ay.strangled.net, KGen GitHub mirror, Pouet/Demozoo manifest).
 
 ## Quick Start
 
@@ -263,13 +267,16 @@ After cloning, build the local track indexes for the local archive collections:
 make build-indexes
 
 # or run the builders directly
-python scripts/build_asma_index.py   # indexes all .sap files in archiwum/asma/
-python scripts/build_hvsc_index.py   # indexes all .sid files in archiwum/hvsc/C64Music/
-python scripts/build_ay_index.py     # indexes all .ay files in archiwum/ay/
-python scripts/build_ym_index.py     # indexes all .ym files in archiwum/ym/
-python scripts/build_tiny_index.py   # indexes all .mod/.xm/.it/.s3m files in archiwum/tiny/
+python scripts/build_asma_index.py   # indexes all .sap files in robbo-music/asma/
+python scripts/build_hvsc_index.py   # indexes all .sid files in robbo-music/hvsc/C64Music/
+python scripts/build_ay_index.py     # indexes all .ay files in robbo-music/ay/
+python scripts/build_ym_index.py     # indexes all .ym files in robbo-music/ym/
+python scripts/build_tiny_index.py   # indexes all .mod/.xm/.it/.s3m files in robbo-music/tiny/
+python scripts/build_pouet_index.py  # indexes Scena (Pouet/Demozoo) modules
 python scripts/build_kgen_index.py   # indexes keygen music modules
 python scripts/build_modarchive_index.py  # indexes ModArchive modules
+python scripts/build_party_index.py  # indexes fresh Party Music compos (prefixed party/)
+python scripts/build_legacy_index.py # indexes Party Legacy compo history (prefixed legacy/)
 ```
 
 These generate `*_cache_local.json` files for instant startup — no crawling at runtime.
@@ -330,7 +337,7 @@ robbo-obibok-v2/
 │   ├── stream.py            # Voice stream source
 │   ├── voice_streams.py      # Discord stream lifecycle ownership
 │   └── tools_cog.py         # Utility commands (!stats, !ocko, !help)
-├── tests/                   # 230+ unit tests
+├── tests/                   # 380+ unit tests
 ├── scripts/                 # Index builder scripts
 ├── deploy/                  # systemd service files
 ├── extras/                  # Assets (banner, avatar)
