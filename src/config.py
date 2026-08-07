@@ -95,10 +95,7 @@ def validate_config(data: dict) -> None:
         archive_path = archive.get("path", "archiwum")
         archive_parts = Path(archive_path).parts if isinstance(archive_path, str) else ()
         if "path" in archive and (
-            not isinstance(archive_path, str)
-            or not archive_path
-            or Path(archive_path).is_absolute()
-            or ".." in archive_parts
+            not isinstance(archive_path, str) or not archive_path or ".." in archive_parts
         ):
             raise ValueError("config.archive.path must be a non-empty string")
 

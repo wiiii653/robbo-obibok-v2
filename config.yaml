@@ -20,9 +20,9 @@ playback:
   loop: true  # true = loop queue (wrap to start when playlist ends)
   shuffle: true
 
-# Archive storage path (relative to project root)
+# Archive storage path — absolute (robbo-music, przeniesione z archive/robbo-obibot/archiwum 2026-08-07)
 archive:
-  path: "archiwum"
+  path: "/home/boruta/robbo-music"
 
 # Auto-start / Auto-stop
 auto:

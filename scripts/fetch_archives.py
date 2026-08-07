@@ -36,7 +36,12 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-ARCHIVIUM = Path(os.environ.get("ROBBO_ARCHIVIUM", str(PROJECT_ROOT / "archiwum")))
+# Ścieżka archiwum z config.yaml (archive.path) — może być absolutna
+# (np. /home/boruta/robbo-music) albo względna; env ROBBO_ARCHIVIUM nadal
+# nadpisuje, gdy trzeba wskazać inny katalog bez ruszania configu.
+from index_config import load_archive_root
+
+ARCHIVIUM = Path(os.environ.get("ROBBO_ARCHIVIUM", str(load_archive_root(PROJECT_ROOT))))
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
 
 

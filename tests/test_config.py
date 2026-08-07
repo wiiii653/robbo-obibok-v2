@@ -80,12 +80,18 @@ class TestLoadConfig:
         with pytest.raises(ValueError, match="DISCORD_BOT_TOKEN"):
             load_config(config_path)
 
-    @pytest.mark.parametrize("path", ["/var/lib/robbo/archive", "../archive", "foo/../../archive"])
+    @pytest.mark.parametrize("path", ["../archive", "foo/../../archive", "archiwum/../../../etc"])
     def test_archive_path_must_stay_relative(self, tmp_path, path):
         config_path = tmp_path / "config.yaml"
         config_path.write_text(f"archive:\n  path: {path}\n")
         with pytest.raises(ValueError, match="archive.path"):
             load_config(config_path)
+
+    def test_archive_path_may_be_absolute(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text('archive:\n  path: "/home/boruta/robbo-music"\n')
+        cfg = load_config(config_path)
+        assert cfg.archive_path == "/home/boruta/robbo-music"
 
     def test_format_volumes_are_loaded_and_validated(self, tmp_path):
         config_path = tmp_path / "config.yaml"
