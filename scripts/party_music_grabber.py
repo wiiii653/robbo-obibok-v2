@@ -170,7 +170,7 @@ def _download(url: str, dest: Path, retries: int = 3) -> bool:
 
 
 def fetch_all_parties(cutoff_iso: str) -> list[dict]:
-    """Paginate po wszystkich party, zwroc te z end_date >= cutoff."""
+    """Paginate po wszystkich party, zwroc te z cutoff <= end_date <= dzisiaj."""
     parties: list[dict] = []
     page = 1
     while True:
@@ -185,7 +185,8 @@ def fetch_all_parties(cutoff_iso: str) -> list[dict]:
         if page % 20 == 0:
             print(f"  ...strona {page}", file=sys.stderr)
         time.sleep(SLEEP_BETWEEN)
-    return [p for p in parties if (p.get("end_date") or "")[:10] >= cutoff_iso]
+    today_iso = time.strftime("%Y-%m-%d")
+    return [p for p in parties if cutoff_iso <= (p.get("end_date") or "")[:10] <= today_iso]
 
 
 def fetch_party_detail(party_id: int) -> dict | None:
