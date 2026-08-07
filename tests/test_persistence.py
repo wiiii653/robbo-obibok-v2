@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from src.persistence import load_json, load_tracks_from_cache, save_json
 
@@ -48,6 +49,21 @@ class TestSaveJson:
         assert save_json(filepath, {"ok": True}) is True
         assert load_json(filepath) == {"ok": True}
         assert (tmp_path / ".locked.json.lock").exists()
+
+    def test_rejects_symlinked_persistence_directory(self, tmp_path, caplog):
+        # Symlink musi wskazywać katalog NAPRAWDĘ poza rootem — inaczej walidacja
+        # słusznie przepuszcza (realpath nadal w root).
+        import tempfile
+
+        outside = Path(tempfile.mkdtemp(prefix="outside-root-"))
+        var_dir = tmp_path / "var"
+        var_dir.symlink_to(outside, target_is_directory=True)
+        filepath = var_dir / "queues" / "queue.json"
+
+        assert save_json(filepath, {"ok": True}, root_dir=tmp_path) is False
+        assert load_json(filepath, root_dir=tmp_path) is None
+        assert not (outside / "queues" / "queue.json").exists()
+        assert "resolving outside root" in caplog.text
 
 
 class TestLoadTracksFromCache:

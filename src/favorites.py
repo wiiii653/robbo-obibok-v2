@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from pathlib import Path
@@ -67,15 +68,53 @@ def _normalize_playlist_record(data: object) -> dict | None:
 
 class Favorites:
     def __init__(self, root_dir: str) -> None:
+        self._root_dir = Path(root_dir)
         self._filepath = Path(root_dir) / "favorites.json"
         self._data: dict[str, list[dict]] = {}
         self._filepath_sets: dict[str, set[str]] = {}
         self._loaded = False
+        self._lock = asyncio.Lock()
+
+    async def _run_locked(self, method, *args):
+        """Run persistence-backed operations off the event loop serially."""
+        async with self._lock:
+            return await asyncio.to_thread(method, *args)
+
+    async def async_toggle(
+        self,
+        user_id: int,
+        filepath: str,
+        title: str = "",
+        collection_id: str = "",
+        author: str = "",
+    ) -> bool:
+        return await self._run_locked(self.toggle, user_id, filepath, title, collection_id, author)
+
+    async def async_add(
+        self,
+        user_id: int,
+        filepath: str,
+        title: str = "",
+        collection_id: str = "",
+        author: str = "",
+    ) -> bool:
+        return await self._run_locked(self.add, user_id, filepath, title, collection_id, author)
+
+    async def async_remove(self, user_id: int, filepath: str) -> bool:
+        return await self._run_locked(self.remove, user_id, filepath)
+
+    async def async_get_tracks(self, user_id: int) -> list[dict]:
+        return await self._run_locked(self.get_tracks, user_id)
+
+    async def async_set_track_metadata(
+        self, user_id: int, filepath: str, title: str, author: str = ""
+    ) -> bool:
+        return await self._run_locked(self.set_track_metadata, user_id, filepath, title, author)
 
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        raw = load_json(self._filepath)
+        raw = load_json(self._filepath, root_dir=self._root_dir)
         if isinstance(raw, dict):
             raw_lists = [value for value in raw.values() if isinstance(value, list)]
             total_entries = sum(len(value) for value in raw_lists)
@@ -112,7 +151,11 @@ class Favorites:
         self._loaded = True
 
     def _save(self) -> None:
-        save_json(self._filepath, {"schema_version": FAVORITES_SCHEMA_VERSION, **self._data})
+        save_json(
+            self._filepath,
+            {"schema_version": FAVORITES_SCHEMA_VERSION, **self._data},
+            root_dir=self._root_dir,
+        )
 
     def _track_index(self, user_id: int, filepath: str) -> int | None:
         self._ensure_loaded()
@@ -205,8 +248,8 @@ class Favorites:
 
 class PlaylistLibrary:
     def __init__(self, root_dir: str) -> None:
-        self._dir = Path(root_dir) / "var" / "playlists"
-        self._dir.mkdir(parents=True, exist_ok=True)
+        self._root_dir = Path(root_dir)
+        self._dir = self._root_dir / "var" / "playlists"
 
     def _safe_name(self, name: str) -> str:
         safe = "".join(c if c.isalnum() or c in " _-." else "_" for c in name)
@@ -229,14 +272,14 @@ class PlaylistLibrary:
             "created": time.time(),
             "tracks": tracks,
         }
-        save_json(filepath, data)
+        save_json(filepath, data, root_dir=self._root_dir)
         return safe
 
     def load(self, name: str) -> dict | None:
         safe = self._safe_name(name)
         for ext in ("", ".json"):
             filepath = self._dir / f"{safe}{ext}"
-            result = load_json(filepath)
+            result = load_json(filepath, root_dir=self._root_dir)
             normalized = _normalize_playlist_record(result)
             if normalized is not None:
                 return normalized
@@ -245,7 +288,7 @@ class PlaylistLibrary:
     def list_playlists(self) -> list[dict]:
         playlists: list[dict] = []
         for filepath in sorted(self._dir.glob("*.json")):
-            data = load_json(filepath)
+            data = load_json(filepath, root_dir=self._root_dir)
             normalized = _normalize_playlist_record(data)
             if not normalized:
                 continue

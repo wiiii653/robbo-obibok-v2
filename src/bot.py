@@ -322,51 +322,38 @@ class ObibokBot(commands.Bot):
     async def _health_watchdog(self) -> None:
         while not self.is_closed():
             await asyncio.sleep(30)
-            elapsed = 0.0
+            await self._health_watchdog_tick()
+
+    async def _health_watchdog_tick(self) -> None:
+        """Run one watchdog pass; failures are isolated to the affected guild."""
+        elapsed = 0.0
+        try:
+            loop = asyncio.get_running_loop()
+            t0 = loop.time()
+            await asyncio.to_thread(self.engine.audio.ensure_ready)
+            elapsed = loop.time() - t0
+            if elapsed > 0.5:
+                logger.warning("Health watchdog: ensure_ready took %.2fs (long tick)", elapsed)
+        except Exception as exc:
+            logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
+        await self._check_active_voice_streams()
+        for gid in list(self._pending_voice_reconnects):
             try:
-                loop = asyncio.get_running_loop()
-                t0 = loop.time()
-                await asyncio.to_thread(self.engine.audio.ensure_ready)
-                elapsed = loop.time() - t0
-                if elapsed > 0.5:
-                    logger.warning("Health watchdog: ensure_ready took %.2fs (long tick)", elapsed)
-            except Exception as exc:
-                logger.warning("Health watchdog failed after %.2fs: %s", elapsed, exc)
-            # Check active voice streams
-            for gid in self.streams.guild_ids():
-                guild = self.get_guild(gid)
-                if not guild:
-                    continue
-                vc = guild.voice_client
-                if not vc or not vc.is_connected():
-                    logger.warning(
-                        "Health watchdog: voice disconnected for active stream in guild %s", gid
-                    )
-                    await self._handle_voice_disconnect(gid)
-                elif not vc.is_playing():
-                    logger.warning(
-                        "Health watchdog: voice connected but not playing for guild %s, restarting stream",
-                        gid,
-                    )
-                    playback_cog = self.get_cog("PlaybackCog")
-                    if playback_cog:
-                        await playback_cog._recover_voice(gid, vc)
-                    else:
-                        self.start_stream(gid, vc)
-            for gid in list(self._pending_voice_reconnects):
                 await self._retry_voice_reconnect(gid)
-            # Recover orphaned playback — state says playing but no active stream
-            # (happens when voice disconnects and stream ends without RECONNECT)
-            now = time.monotonic()
-            min_interval = getattr(self, "_orphaned_cooldown", 60.0)
-            last = getattr(self, "_last_orphaned_check", 0.0)
-            if now - last < min_interval:
+            except Exception as exc:
+                logger.warning("Health watchdog: reconnect check failed for guild %s: %s", gid, exc)
                 continue
-            self._last_orphaned_check = now
-            for gid, state in list(self._states.items()):
-                if not state.is_playing:
-                    continue
-                if self.streams.contains(gid):
+        # Recover orphaned playback — state says playing but no active stream
+        # (happens when voice disconnects and stream ends without RECONNECT)
+        now = time.monotonic()
+        min_interval = getattr(self, "_orphaned_cooldown", 60.0)
+        last = getattr(self, "_last_orphaned_check", 0.0)
+        if now - last < min_interval:
+            return
+        self._last_orphaned_check = now
+        for gid, state in list(self._states.items()):
+            try:
+                if not state.is_playing or self.streams.contains(gid):
                     continue
                 guild = self.get_guild(gid)
                 if not guild:
@@ -387,6 +374,36 @@ class ObibokBot(commands.Bot):
                 else:
                     await self._handle_voice_disconnect(gid)
                     await self._retry_voice_reconnect(gid)
+            except Exception as exc:
+                logger.warning("Health watchdog: orphan recovery failed for guild %s: %s", gid, exc)
+                continue
+
+    async def _check_active_voice_streams(self) -> None:
+        """Recover every active stream independently during a watchdog pass."""
+        for gid in self.streams.guild_ids():
+            try:
+                guild = self.get_guild(gid)
+                if not guild:
+                    continue
+                vc = guild.voice_client
+                if not vc or not vc.is_connected():
+                    logger.warning(
+                        "Health watchdog: voice disconnected for active stream in guild %s", gid
+                    )
+                    await self._handle_voice_disconnect(gid)
+                elif not vc.is_playing():
+                    logger.warning(
+                        "Health watchdog: voice connected but not playing for guild %s, restarting stream",
+                        gid,
+                    )
+                    playback_cog = self.get_cog("PlaybackCog")
+                    if playback_cog:
+                        await playback_cog._recover_voice(gid, vc)
+                    else:
+                        self.start_stream(gid, vc)
+            except Exception as exc:
+                logger.warning("Health watchdog: stream check failed for guild %s: %s", gid, exc)
+                continue
 
 
 __all__ = ["ObibokBot", "CollectionCog", "FavoritesCog", "PlaybackCog", "ToolsCog"]

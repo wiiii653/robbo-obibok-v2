@@ -17,7 +17,7 @@ def load_raw_paths(collection_id: str, root_dir: str = ".") -> list[str] | None:
     if not col:
         return None
     cache_path = Path(root_dir) / col.cache_file
-    return load_tracks_from_cache(cache_path)
+    return load_tracks_from_cache(cache_path, root_dir=root_dir)
 
 
 def flip_collection(current_id: str) -> str:

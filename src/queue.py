@@ -139,7 +139,6 @@ def save_queue(state: PlaybackState, root_dir: str) -> bool:
     if not state.guild_id:
         return False
     queue_dir = Path(root_dir) / "var" / "queues"
-    queue_dir.mkdir(parents=True, exist_ok=True)
     filepath = queue_dir / f"{state.guild_id}.json"
     data = {
         "schema_version": QUEUE_SCHEMA_VERSION,
@@ -151,13 +150,13 @@ def save_queue(state: PlaybackState, root_dir: str) -> bool:
         "is_looping": state.is_looping,
         "collection_mode": state.collection_mode,
     }
-    return save_json(filepath, data)
+    return save_json(filepath, data, root_dir=root_dir)
 
 
 def load_queue(guild_id: int, root_dir: str) -> dict | None:
     queue_dir = Path(root_dir) / "var" / "queues"
     filepath = queue_dir / f"{guild_id}.json"
-    return normalize_queue_record(load_json(filepath))
+    return normalize_queue_record(load_json(filepath, root_dir=root_dir))
 
 
 def restore_queue(data: dict, state: PlaybackState) -> None:
@@ -173,6 +172,7 @@ def restore_queue(data: dict, state: PlaybackState) -> None:
 
 class Blacklist:
     def __init__(self, root_dir: str) -> None:
+        self._root_dir = Path(root_dir)
         self._filepath = Path(root_dir) / "blacklist.json"
         self._data: dict[str, list[str]] = {}
         self._loaded = False
@@ -180,7 +180,7 @@ class Blacklist:
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        raw = load_json(self._filepath)
+        raw = load_json(self._filepath, root_dir=self._root_dir)
         if isinstance(raw, dict):
             normalized: dict[str, list[str]] = {}
             for key, value in raw.items():
@@ -192,7 +192,11 @@ class Blacklist:
         self._loaded = True
 
     def _save(self) -> None:
-        save_json(self._filepath, {"schema_version": BLACKLIST_SCHEMA_VERSION, **self._data})
+        save_json(
+            self._filepath,
+            {"schema_version": BLACKLIST_SCHEMA_VERSION, **self._data},
+            root_dir=self._root_dir,
+        )
 
     def is_blacklisted(self, filepath: str) -> bool:
         self._ensure_loaded()

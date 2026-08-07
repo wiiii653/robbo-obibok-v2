@@ -84,7 +84,9 @@ class FavoritesCog(commands.Cog):
             msg_data["collection_id"],
             "",
         )
-        meta = self.bot.engine.get_track_metadata(msg_data["filepath"], collection_id)
+        meta = await asyncio.to_thread(
+            self.bot.engine.get_track_metadata, msg_data["filepath"], collection_id
+        )
         raw_title = meta.get("NAME", "") or ""
         # Strip non-printable chars from metadata (SID/SAP headers often contain binary prefixes)
         if raw_title:
@@ -97,7 +99,7 @@ class FavoritesCog(commands.Cog):
                 raw_title = f"ModArchive #{mod_id}"
             else:
                 raw_title = filepath.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ")
-        self.bot.engine.favorites.add(
+        await self.bot.engine.favorites.async_add(
             payload.user_id,
             msg_data["filepath"],
             raw_title,
@@ -114,7 +116,7 @@ class FavoritesCog(commands.Cog):
         msg_data = self.bot._np_messages.get(payload.message_id)
         if not msg_data:
             return
-        self.bot.engine.favorites.remove(
+        await self.bot.engine.favorites.async_remove(
             payload.user_id,
             msg_data["filepath"],
         )
@@ -122,7 +124,7 @@ class FavoritesCog(commands.Cog):
     @commands.command(aliases=["favs"])
     async def favorites(self, ctx: commands.Context) -> None:
         logger = logging.getLogger(__name__)
-        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+        tracks = await self.bot.engine.favorites.async_get_tracks(ctx.author.id)
         logger.info("!favs called by %s — %d tracks in cache", ctx.author.id, len(tracks))
         if not tracks:
             return await ctx.send(
@@ -150,7 +152,7 @@ class FavoritesCog(commands.Cog):
                     if name:
                         name = _clean_re.sub("", name).strip()
                     if name:
-                        self.bot.engine.favorites.set_track_metadata(
+                        await self.bot.engine.favorites.async_set_track_metadata(
                             ctx.author.id, t["filepath"], name, meta.get("AUTHOR", "")
                         )
                 if name:
@@ -175,7 +177,7 @@ class FavoritesCog(commands.Cog):
             return await ctx.send("Join a voice channel first!")
         if not await require_control(self.bot, ctx):
             return
-        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+        tracks = await self.bot.engine.favorites.async_get_tracks(ctx.author.id)
         if not tracks:
             return await ctx.send(
                 "📭 **No favorites yet.** React to any Now Playing embed with an emoji to save tracks!"
@@ -242,18 +244,18 @@ class FavoritesCog(commands.Cog):
 
     @commands.command(aliases=["pls"])
     async def favsave(self, ctx: commands.Context, *, name: str) -> None:
-        tracks = self.bot.engine.favorites.get_tracks(ctx.author.id)
+        tracks = await self.bot.engine.favorites.async_get_tracks(ctx.author.id)
         if not tracks:
             return await ctx.send("No favorites to save.")
         lib = PlaylistLibrary(self.bot.root_dir)
-        lib.save(name, tracks, ctx.author.id, ctx.author.name)
+        await asyncio.to_thread(lib.save, name, tracks, ctx.author.id, ctx.author.name)
         await ctx.send(f"Saved as `{name}` ({len(tracks)} tracks).")
 
     @commands.command(aliases=["fpl"])
     async def favload(self, ctx: commands.Context, *, name: str) -> None:
         if name.strip().lower() == "list":
             lib = PlaylistLibrary(self.bot.root_dir)
-            playlists = lib.list_playlists()
+            playlists = await asyncio.to_thread(lib.list_playlists)
             if not playlists:
                 return await ctx.send(
                     "📂 **No playlists saved yet.** Use `!favsave <name>` to create one!"
@@ -268,7 +270,7 @@ class FavoritesCog(commands.Cog):
         if not await require_control(self.bot, ctx):
             return
         lib = PlaylistLibrary(self.bot.root_dir)
-        playlist = lib.load(name)
+        playlist = await asyncio.to_thread(lib.load, name)
         if not playlist:
             return await ctx.send(f"Playlist `{name}` not found.")
         if not self.bot.try_acquire_lease(ctx.guild):
@@ -287,7 +289,7 @@ class FavoritesCog(commands.Cog):
     @commands.command(aliases=["plist"])
     async def playlists(self, ctx: commands.Context) -> None:
         lib = PlaylistLibrary(self.bot.root_dir)
-        playlists = lib.list_playlists()
+        playlists = await asyncio.to_thread(lib.list_playlists)
         if not playlists:
             return await ctx.send("No saved playlists.")
         lines = [f"`{p['name']}` — {p['tracks']} tracks by {p['author']}" for p in playlists]

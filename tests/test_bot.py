@@ -89,6 +89,22 @@ class TestBotStateManagement:
         assert snapshot["uptime_seconds"] >= 0
         assert snapshot["metrics"]["playback_failures"] == 0
 
+    @pytest.mark.asyncio
+    async def test_health_watchdog_continues_after_stream_start_error(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        bot.streams.guild_ids = MagicMock(return_value=(1, 2))
+        first_guild = MagicMock()
+        second_guild = MagicMock()
+        for guild in (first_guild, second_guild):
+            guild.voice_client.is_connected.return_value = True
+            guild.voice_client.is_playing.return_value = False
+        bot.get_guild = MagicMock(side_effect=[first_guild, second_guild])
+        bot.start_stream = MagicMock(side_effect=OSError("ffmpeg unavailable"))
+
+        await bot._check_active_voice_streams()
+
+        assert bot.start_stream.call_count == 2
+
 
 class TestFavoritesLogic:
     def test_toggle_favorite(self, tmp_path):
