@@ -17,7 +17,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from index_config import load_archive_root
+from index_config import is_track_file, load_archive_root
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVIUM = load_archive_root(ROOT_DIR) / "legacy"
@@ -50,9 +50,8 @@ def main() -> None:
     entries: list[dict] = []
     for root, dirs, files in os.walk(ARCHIVIUM):
         for f in sorted(files):
-            ext = f.rsplit(".", 1)[-1].lower() if "." in f else ""
-            if ext in TRACK_EXTENSIONS:
-                full = Path(root) / f
+            full = Path(root) / f
+            if is_track_file(full, TRACK_EXTENSIONS):
                 # Prefiks "legacy/" (rel do roota archiwum) — jak party/:
                 # _build_track_path pierwsza gałąź dedupe i resolver ścieżek
                 # rozpoznają kolekcję po prefiksie.
