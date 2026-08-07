@@ -29,11 +29,14 @@ from __future__ import annotations
 
 import argparse
 import ftplib
+import ipaddress
 import json
 import os
+import socket
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -43,6 +46,9 @@ from index_config import is_junk_path, is_track_file
 
 MODLAND_HOST = "ftp.modland.com"
 MODLAND_BASE = "/pub/modules"
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+MAX_REDIRECTS = 5
+TRUSTED_HTTP_HOSTS = {MODLAND_HOST, "archive.org", "files.scene.org"}
 
 # rozszerzenie -> katalog formatu na Modlandzie
 FORMAT_DIRS = {
@@ -57,6 +63,85 @@ FORMAT_DIRS = {
 }
 
 TRACK_EXTS = tuple(FORMAT_DIRS.keys())
+
+
+def _validate_download_url(url: str) -> None:
+    """Reject non-public HTTP(S) URLs outside the known download hosts."""
+    parsed = urllib.parse.urlsplit(url)
+    host = parsed.hostname
+    if not host or parsed.username or parsed.password:
+        raise ValueError("URL without a valid host")
+    if parsed.scheme.lower() not in {"http", "https"}:
+        raise ValueError("only HTTP(S) URLs are allowed")
+    if host.lower() not in TRUSTED_HTTP_HOSTS:
+        raise ValueError(f"untrusted download host {host}")
+    try:
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError(f"cannot resolve host {host}") from exc
+    if not addresses:
+        raise ValueError(f"cannot resolve host {host}")
+    for _family, _type, _proto, _canonname, sockaddr in addresses:
+        if not ipaddress.ip_address(sockaddr[0]).is_global:
+            raise ValueError(f"non-public host {host}")
+
+
+def _validate_ftp_host(host: str) -> None:
+    """FTP downloads are intentionally pinned to Modland."""
+    if host.lower() != "ftp.modland.com":
+        raise ValueError(f"untrusted FTP host {host}")
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Return redirects to the caller so each hop can be validated first."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _open_checked_url(url: str, timeout: int):
+    """Open *url* with at most five separately validated redirects."""
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    current_url = url
+    for redirect in range(MAX_REDIRECTS + 1):
+        _validate_download_url(current_url)
+        req = urllib.request.Request(
+            current_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
+            },
+        )
+        try:
+            return opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {301, 302, 303, 307, 308}:
+                raise
+            location = exc.headers.get("Location")
+            if not location:
+                raise IOError("redirect without Location header") from exc
+            exc.close()
+            if redirect == MAX_REDIRECTS:
+                raise IOError(f"too many redirects (>{MAX_REDIRECTS})")
+            current_url = urllib.parse.urljoin(current_url, location)
+    raise AssertionError("unreachable")
+
+
+def _safe_manifest_path(value: object) -> Path | None:
+    """Return a non-junk relative manifest path, or report an invalid value."""
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts or is_junk_path(path):
+        return None
+    return path
+
+
+def _destination_below(dest_root: Path, relative: Path) -> Path | None:
+    """Resolve a manifest target and require that it remains below *dest_root*."""
+    root = dest_root.resolve()
+    target = (root / relative).resolve()
+    return target if target.is_relative_to(root) else None
 
 
 def enc(name: str) -> str:
@@ -74,10 +159,11 @@ def decode_name(name: str) -> str:
 
 
 def artist_path(artist: dict) -> Path:
-    p = Path(artist["name"])
-    if artist.get("subdir"):
-        p = p / artist["subdir"]
-    return p
+    name = _safe_manifest_path(artist.get("name"))
+    subdir = _safe_manifest_path(artist["subdir"]) if artist.get("subdir") else Path()
+    if name is None or subdir is None:
+        raise ValueError("unsafe artist path")
+    return name / subdir
 
 
 def remote_dir(artist: dict, fmt: str, base: str) -> str:
@@ -99,6 +185,7 @@ def file_format(fname: str) -> str | None:
 
 def ftp_size(path: str) -> int | None:
     """Rozmiar pliku na FTP (SIZE). None gdy nie da się odczytać."""
+    _validate_ftp_host(MODLAND_HOST)
     ftp = ftplib.FTP(MODLAND_HOST, timeout=20)
     try:
         ftp.login()
@@ -114,6 +201,11 @@ def ftp_size(path: str) -> int | None:
 
 def download_ftp(remote: str, dest: Path, logger=print, retries: int = 3) -> bool:
     """Pobierz pojedynczy plik FTP z retry i atomic write. Zwraca True gdy OK."""
+    try:
+        _validate_ftp_host(MODLAND_HOST)
+    except ValueError as exc:
+        logger(f"  !! FAILED: {remote} — {exc}")
+        return False
     last_err = None
     for attempt in range(1, retries + 1):
         ftp = None
@@ -158,31 +250,38 @@ def download_ftp(remote: str, dest: Path, logger=print, retries: int = 3) -> boo
 
 
 def download_http(url: str, dest: Path, logger=print, retries: int = 3) -> bool:
-    """Pobierz przez HTTP(S) z retry i atomic write."""
+    """Pobierz przez HTTP(S) z retry, redirect checks i atomic write."""
     last_err = None
     for attempt in range(1, retries + 1):
+        tmp = None
         try:
+            _validate_download_url(url)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0"
-                },
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = resp.read()
-            if not data:
+            with _open_checked_url(url, timeout=60) as resp:
+                content_length = resp.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_DOWNLOAD_BYTES:
+                    raise IOError("response przekracza limit 50 MB")
+                fd, tmp = tempfile.mkstemp(dir=str(dest.parent), suffix=".part")
+                size = 0
+                with os.fdopen(fd, "wb") as fh:
+                    while chunk := resp.read(1024 * 1024):
+                        size += len(chunk)
+                        if size > MAX_DOWNLOAD_BYTES:
+                            raise IOError("response przekracza limit 50 MB")
+                        fh.write(chunk)
+            if not size:
                 raise IOError("pusty response")
-            fd, tmp = tempfile.mkstemp(dir=str(dest.parent), suffix=".part")
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(data)
             os.replace(tmp, dest)
-            logger(f"  ✓ {dest.name} ({len(data):,} B)")
+            tmp = None
+            logger(f"  ✓ {dest.name} ({size:,} B)")
             return True
         except Exception as exc:
             last_err = exc
             logger(f"  ✗ attempt {attempt}/{retries}: {exc}")
             time.sleep(1.5 * attempt)
+        finally:
+            if tmp is not None:
+                Path(tmp).unlink(missing_ok=True)
     logger(f"  !! FAILED: {url} — {last_err}")
     return False
 
@@ -225,8 +324,10 @@ def build_manifest(root: Path) -> dict:
 def fill_formats(manifest: dict) -> None:
     """Uzupełnij format z rozszerzenia pliku, jeśli nie podany wprost."""
     for a in manifest.get("artists", []):
+        if not isinstance(a, dict) or not isinstance(a.get("files"), list):
+            continue
         if not a.get("format"):
-            exts = {Path(f).suffix.lower() for f in a["files"]}
+            exts = {Path(f).suffix.lower() for f in a["files"] if isinstance(f, str)}
             fmt = FORMAT_DIRS.get(next(iter(exts), ""))
             a["format"] = fmt or "Protracker"
             if len(exts) > 1:
@@ -245,6 +346,14 @@ def run_manifest(
 
     tasks = []  # (kind, src, dest)
     for a in manifest.get("artists", []):
+        if not isinstance(a, dict) or not isinstance(a.get("files"), list):
+            logger("  !! pomijam nieprawidłowy wpis artysty")
+            continue
+        artist_name = _safe_manifest_path(a.get("name"))
+        subdir = _safe_manifest_path(a["subdir"]) if "subdir" in a else Path()
+        if artist_name is None or subdir is None:
+            logger(f"  !! pomijam artystę {a.get('name')!r}: niebezpieczna ścieżka")
+            continue
         artist_fmt = a.get("format")
         if not artist_fmt:
             mixed = len({file_format(f) for f in a["files"] if file_format(f)}) > 1
@@ -253,24 +362,47 @@ def run_manifest(
             else:
                 artist_fmt = file_format(a["files"][0]) if a["files"] else None
         for fname in a["files"]:
-            candidate = Path(fname)
-            if is_junk_path(candidate) or candidate.suffix.lower() not in TRACK_EXTS:
+            candidate = _safe_manifest_path(fname)
+            if candidate is None or candidate.suffix.lower() not in TRACK_EXTS:
                 logger(f"  !! pomijam {a['name']}/{fname}: śmieci lub nieznany format")
                 continue
             fmt = artist_fmt or file_format(fname)
             if not fmt:
                 logger(f"  !! pomijam {a['name']}/{fname}: nieznany format")
                 continue
-            dest = dest_root / artist_path(a) / decode_name(fname)
+            decoded = _safe_manifest_path(decode_name(fname))
+            if decoded is None:
+                logger(f"  !! pomijam {a['name']}/{fname}: niebezpieczna ścieżka")
+                continue
+            relative = artist_name / subdir / decoded
+            dest = _destination_below(dest_root, relative)
+            if dest is None:
+                logger(f"  !! pomijam {a['name']}/{fname}: cel poza katalogiem docelowym")
+                continue
             remote = remote_path(a, fname, base, fmt)
             tasks.append(("ftp", remote, dest))
     for d in manifest.get("direct", []):
-        destination = Path(d["dest"])
-        if is_junk_path(destination) or destination.suffix.lower() not in TRACK_EXTS:
-            logger(f"  !! pomijam {d['dest']}: śmieci lub nieznany format")
+        if not isinstance(d, dict):
+            logger("  !! pomijam nieprawidłowy wpis direct")
             continue
-        dest = dest_root / destination
-        tasks.append(("http", d["url"], dest))
+        destination = _safe_manifest_path(d.get("dest"))
+        if destination is None or destination.suffix.lower() not in TRACK_EXTS:
+            logger(f"  !! pomijam {d.get('dest')!r}: śmieci lub nieznany format")
+            continue
+        dest = _destination_below(dest_root, destination)
+        if dest is None:
+            logger(f"  !! pomijam {d['dest']}: cel poza katalogiem docelowym")
+            continue
+        url = d.get("url")
+        if not isinstance(url, str):
+            logger(f"  !! pomijam {d['dest']}: nieprawidłowy URL")
+            continue
+        try:
+            _validate_download_url(url)
+        except ValueError as exc:
+            logger(f"  !! pomijam {d['dest']}: niebezpieczny URL ({exc})")
+            continue
+        tasks.append(("http", url, dest))
 
     if dry or check_only:
         logger(f"Plan: {len(tasks)} plików -> {dest_root}")

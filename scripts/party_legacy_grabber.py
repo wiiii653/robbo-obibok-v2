@@ -77,9 +77,13 @@ def main() -> int:
 
     downloaded = skipped = 0
     for p in parties:
-        pid = p["id"]
-        pname = p.get("name", "?")
-        pdate = (p.get("end_date") or "?")[:10]
+        party = p if isinstance(p, dict) else {}
+        pid = party.get("id")
+        pname = party.get("name", "?")
+        pdate = (party.get("end_date") or "?")[:10]
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            print(f"\n— {pname} (nieprawidłowe id={pid!r}; pomijam)", file=sys.stderr)
+            continue
         print(f"\n— {pname} (id={pid}, {pdate})")
         detail = fetch_party_detail(pid)
         if not detail:

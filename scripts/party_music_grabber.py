@@ -51,6 +51,7 @@ SCENE_ORG = "files.scene.org"
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 500
 MAX_ARCHIVE_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_REDIRECTS = 5
 
 # Zaufane serwery plikow demosceny, ktore nie maja HTTPS (grabber pobiera z
 # nich od poczatku; walidacja URL-i ma blokowac SSRF, nie lamac dzialajacych
@@ -212,12 +213,33 @@ def _validate_download_url(url: str) -> None:
             raise ValueError(f"non-public host {host}")
 
 
-class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Apply the same SSRF checks to every redirect target."""
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Return redirects to the caller so every hop is checked before opening."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _validate_download_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        return None
+
+
+def _open_checked_url(url: str, timeout: int):
+    """Open a URL after validating every redirect target (maximum five hops)."""
+    opener = urllib.request.build_opener(_NoRedirectHandler())
+    current_url = url
+    for redirect in range(MAX_REDIRECTS + 1):
+        _validate_download_url(current_url)
+        req = urllib.request.Request(current_url, headers={"User-Agent": DEMOZOO_UA})
+        try:
+            return opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {301, 302, 303, 307, 308}:
+                raise
+            location = exc.headers.get("Location")
+            if not location:
+                raise IOError("redirect without Location header") from exc
+            exc.close()
+            if redirect == MAX_REDIRECTS:
+                raise IOError(f"too many redirects (>{MAX_REDIRECTS})")
+            current_url = urllib.parse.urljoin(current_url, location)
+    raise AssertionError("unreachable")
 
 
 def _download(url: str, dest: Path, retries: int = 3) -> bool:
@@ -227,10 +249,7 @@ def _download(url: str, dest: Path, retries: int = 3) -> bool:
     for attempt in range(retries):
         tmp: str | None = None
         try:
-            _validate_download_url(url)
-            req = urllib.request.Request(url, headers={"User-Agent": DEMOZOO_UA})
-            opener = urllib.request.build_opener(_SafeRedirectHandler())
-            with opener.open(req, timeout=90) as resp:
+            with _open_checked_url(url, timeout=90) as resp:
                 content_length = resp.headers.get("Content-Length")
                 if content_length and int(content_length) > MAX_DOWNLOAD_BYTES:
                     raise IOError("response exceeds 200 MB limit")
