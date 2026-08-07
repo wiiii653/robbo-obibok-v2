@@ -96,6 +96,10 @@ class CollectionCog(commands.Cog):
     async def kgen(self, ctx: commands.Context) -> None:
         await self._switch(ctx, "kgen")
 
+    @commands.command(aliases=["compo"])
+    async def party(self, ctx: commands.Context) -> None:
+        await self._switch(ctx, "party")
+
     async def _switch(self, ctx: commands.Context, collection_id: str) -> None:
         if not ctx.guild:
             return

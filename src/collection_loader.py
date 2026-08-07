@@ -137,6 +137,9 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
     # New native .ym paths resolve via extension_map below.
     if "/ym_ogg/" in filepath.replace("\\", "/"):
         return "ym"
+    # Party collection (party music grabber, archiwum/party/<platform>/)
+    if "/party/" in filepath.replace("\\", "/"):
+        return "party"
 
     # Unambiguous extensions
     extension_map = {
@@ -150,7 +153,7 @@ def resolve_collection_for_filepath(filepath: str) -> str | None:
 
     # Ambiguous module extensions — check each collection's extension list
     # Priority: more specific collections first, fallback to modarchive
-    for col_id in ("tiny", "kgen", "modarchive"):
+    for col_id in ("tiny", "party", "kgen", "modarchive"):
         col = COLLECTIONS.get(col_id)
         if col and ext in col.extensions:
             return col_id

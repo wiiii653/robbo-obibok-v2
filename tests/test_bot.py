@@ -146,7 +146,7 @@ class TestCollectionLogic:
         from src.collection_loader import flip_collection
 
         assert flip_collection("asma") == "modarchive"
-        assert flip_collection("kgen") == "hvsc"
+        assert flip_collection("kgen") == "party"
 
     def test_search(self, tmp_path):
         bot = _make_bot(tmp_path)
