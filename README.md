@@ -289,7 +289,7 @@ playback:
   loop: false           # true repeats the current track
   shuffle: true
 archive:
-  path: "archiwum"
+  path: "/home/boruta/robbo-music"   # absolute path; relative also allowed
 auto:
   start_channel: ""      # voice channel name (empty = disabled)
   empty_timeout: 60      # seconds before disconnect when empty
