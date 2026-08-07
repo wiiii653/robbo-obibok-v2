@@ -9,12 +9,10 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 from pathlib import Path
 
-from index_config import is_track_file, load_archive_root
+from index_config import is_track_file, load_archive_root, save_json_atomic
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ARCHIVIUM = load_archive_root(ROOT_DIR) / "party"
@@ -60,14 +58,7 @@ def main() -> None:
                 )
 
     cache = {"version": 1, "total": len(entries), "tracks": entries}
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(OUTPUT.parent), prefix=f".{OUTPUT.name}.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(cache, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, OUTPUT)
-    finally:
-        Path(tmp).unlink(missing_ok=True)
+    save_json_atomic(OUTPUT, cache)
     print(f"[DONE] Saved {len(entries)} tracks to {OUTPUT}")
 
 

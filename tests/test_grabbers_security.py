@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+import download_modarchive_bulk
 import fetch_archives
 import fetch_pouet_mods
 
@@ -81,3 +83,25 @@ def test_hvsc_plan_accepts_numeric_version(tmp_path, monkeypatch):
     assert plan["version"] == "85"
     assert plan["dest"] == tmp_path / "hvsc"
     assert plan["complete_url"].endswith("HVSC_85-all-of-them.7z")
+
+
+def test_modarchive_zip_is_safely_extracted_and_removed(tmp_path):
+    archive = tmp_path / "bundle.zip"
+    with zipfile.ZipFile(archive, "w") as zip_file:
+        zip_file.writestr("nested/song.mod", b"module")
+        zip_file.writestr("__MACOSX/metadata", b"metadata")
+
+    assert download_modarchive_bulk.extract_zip(archive)
+    assert (tmp_path / "bundle" / "nested" / "song.mod").read_bytes() == b"module"
+    assert not (tmp_path / "bundle" / "__MACOSX").exists()
+    assert not archive.exists()
+
+
+def test_modarchive_zip_rejects_traversal_member(tmp_path):
+    archive = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(archive, "w") as zip_file:
+        zip_file.writestr("../escape.mod", b"module")
+
+    assert not download_modarchive_bulk.extract_zip(archive)
+    assert archive.exists()
+    assert not (tmp_path.parent / "escape.mod").exists()

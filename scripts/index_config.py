@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
 
 SYSTEM_METADATA_NAMES = {".ds_store", "desktop.ini", "thumbs.db", ".localized"}
+
+
+def save_json_atomic(path: Path, data: dict) -> None:
+    """Serialize *data* to *path* without ever exposing a partial JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_path = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(data, output, indent=2, ensure_ascii=False)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        Path(temporary_path).unlink(missing_ok=True)
 
 
 def is_junk_path(path: Path) -> bool:
