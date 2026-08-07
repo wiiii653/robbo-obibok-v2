@@ -66,6 +66,7 @@ ACCEPTED_EXTS = {
     "nsf",
     "vgm",
     "vgz",
+    "sndh",
 }
 
 # Katalog docelowy wg platformy z Demozoo (nazwa -> katalog, case-insensitive).
@@ -94,6 +95,7 @@ PLATFORM_DIR = {
 EXT_DIR = {
     "sid": "c64",
     "sap": "atari8",
+    "sndh": "atarist",
     "ay": "zx",
     "ym": "atarist",
     "nsf": "nes",

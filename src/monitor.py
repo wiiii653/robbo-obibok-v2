@@ -12,7 +12,7 @@ from .models import PlaybackState
 
 logger = logging.getLogger(__name__)
 
-CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym"}
+CONSOLE_EXTENSIONS = {"nsf", "sap", "vgm", "vgz", "sid", "ay", "ym", "sndh"}
 DEFAULT_TIMEOUT = 600
 CONSOLE_TIMEOUT = 3600
 CONSOLE_TIMEOUT_UNKNOWN = 180
