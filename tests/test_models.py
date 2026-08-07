@@ -38,7 +38,7 @@ class TestPlaybackState:
 
 class TestFlipOrder:
     def test_flip_order_count(self):
-        assert len(FLIP_ORDER) == 8
+        assert len(FLIP_ORDER) == 9
 
     def test_flip_order_matches_collections(self):
         for col_id in FLIP_ORDER:
