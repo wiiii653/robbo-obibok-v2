@@ -20,6 +20,7 @@ import sys
 import time
 from pathlib import Path
 
+from index_config import load_archive_root
 from party_music_grabber import (
     SLEEP_BETWEEN,
     fetch_all_parties,
@@ -59,7 +60,7 @@ def main() -> int:
     args = ap.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
-    party_root = root_dir / "archiwum" / "party"
+    party_root = load_archive_root(root_dir) / "party"
     cache_path = root_dir / "party_cache_local.json"
 
     print(

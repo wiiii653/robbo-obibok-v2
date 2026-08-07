@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from index_config import load_archive_root
@@ -33,6 +34,7 @@ TRACK_EXTENSIONS = {
     "nsf",
     "vgm",
     "vgz",
+    "snd",
     "sndh",
 }
 
@@ -59,8 +61,14 @@ def main() -> None:
                 )
 
     cache = {"version": 1, "total": len(entries), "tracks": entries}
-    with open(OUTPUT, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2, ensure_ascii=False)
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(OUTPUT.parent), prefix=f".{OUTPUT.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, OUTPUT)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
     print(f"[DONE] Saved {len(entries)} tracks to {OUTPUT}")
 
 
