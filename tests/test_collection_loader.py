@@ -20,7 +20,7 @@ from src.models import COLLECTIONS, FLIP_ORDER
 
 class TestCollectionRegistry:
     def test_all_collections_registered(self):
-        assert len(COLLECTIONS) == 8
+        assert len(COLLECTIONS) == 9
         for col_id in FLIP_ORDER:
             assert col_id in COLLECTIONS
 
