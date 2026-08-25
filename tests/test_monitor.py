@@ -13,6 +13,7 @@ from src.monitor import (
     TrackMonitor,
     compute_timeout,
     is_console_format,
+    maybe_learn_sid_length,
     should_advance_after_stop,
     should_confirm_output_drop,
 )
@@ -59,8 +60,150 @@ class TestComputeTimeout:
     def test_console_length_capped_at_3600(self):
         assert compute_timeout(5000, is_console_format=True) == CONSOLE_TIMEOUT
 
+
     def test_known_length_capped_at_600(self):
         assert compute_timeout(5000) == 600
+
+
+class TestMaybeLearnSidLength:
+    @staticmethod
+    def _sid(tmp_path, name="mystery.sid"):
+        sid = tmp_path / name
+        sid.write_bytes(b"PSID" + b"\x00" * 64)
+        return sid
+
+    def test_skips_non_sid_extensions(self, monkeypatch, tmp_path):
+        mod = tmp_path / "tune.mod"
+        mod.write_bytes(b"M.K.")
+        assert maybe_learn_sid_length(str(mod), 120) is False
+
+    def test_skips_sids_already_known_to_databases(self, monkeypatch, tmp_path):
+        sid = self._sid(tmp_path)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: 100)
+        assert maybe_learn_sid_length(str(sid), 192) is False
+
+    def test_rejects_sub_10s_measurements_as_noise(self, monkeypatch, tmp_path):
+        sid = self._sid(tmp_path)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: None)
+        assert maybe_learn_sid_length(str(sid), 5) is False
+
+    def test_records_unknown_sid_measurement(self, monkeypatch, tmp_path):
+        sid = self._sid(tmp_path)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: None)
+        recorded = []
+        monkeypatch.setattr(
+            "src.monitor.record_sid_length",
+            lambda path, seconds: recorded.append((path, seconds)) or True,
+        )
+        assert maybe_learn_sid_length(str(sid), 192.4) is True
+        assert recorded == [(str(sid), 192)]
+
+
+def _mock_audio(playing=True, output=30, length=0):
+    return type(
+        "MockAudio",
+        (),
+        {
+            "is_playing": lambda self=None: playing,
+            "output_length": lambda self=None: output,
+            "song_length": lambda self=None: length,
+        },
+    )()
+
+
+class TestNaturalEndLearning:
+    @pytest.mark.asyncio
+    async def test_not_playing_end_learns_sid_length(self, monkeypatch, tmp_path):
+        sid = tmp_path / "mystery.sid"
+        sid.write_bytes(b"PSID" + b"\x00" * 64)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: None)
+        recorded = []
+        monkeypatch.setattr(
+            "src.monitor.record_sid_length",
+            lambda path, seconds: recorded.append((path, seconds)) or True,
+        )
+
+        monitor = TrackMonitor(audio=_mock_audio(playing=False))
+        loop = asyncio.get_running_loop()
+        monitor._was_playing = True
+        monitor._not_playing_since = loop.time() - 10
+        monitor._track_started_at = loop.time() - 212
+        state = type(
+            "State", (), {"is_playing": True, "current_track": str(sid)}
+        )()
+        ended = []
+
+        async def on_end(s):
+            ended.append(1)
+            s.is_playing = False
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) == 1
+        assert len(recorded) == 1
+        assert recorded[0][0] == str(sid)
+        assert abs(recorded[0][1] - 212) <= 2
+
+    @pytest.mark.asyncio
+    async def test_known_timeout_does_not_learn(self, monkeypatch, tmp_path):
+        sid = tmp_path / "known.sid"
+        sid.write_bytes(b"PSID" + b"\x00" * 64)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: 100)
+        recorded = []
+        monkeypatch.setattr(
+            "src.monitor.record_sid_length",
+            lambda path, seconds: recorded.append((path, seconds)) or True,
+        )
+
+        monitor = TrackMonitor(audio=_mock_audio(playing=True))
+        loop = asyncio.get_running_loop()
+        monitor._last_track = str(sid)
+        monitor._was_playing = True
+        monitor._cached_song_length = 100
+        monitor._total_time_cached = True
+        monitor._track_started_at = loop.time() - 101
+        state = type(
+            "State", (), {"is_playing": True, "current_track": str(sid)}
+        )()
+        ended = []
+
+        async def on_end(s):
+            ended.append(1)
+            s.is_playing = False
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) == 1
+        assert recorded == []
+
+    @pytest.mark.asyncio
+    async def test_unknown_timeout_does_not_learn(self, monkeypatch, tmp_path):
+        sid = tmp_path / "unknown.sid"
+        sid.write_bytes(b"PSID" + b"\x00" * 64)
+        monkeypatch.setattr("src.monitor.lookup_sid_total_time", lambda _p: None)
+        recorded = []
+        monkeypatch.setattr(
+            "src.monitor.record_sid_length",
+            lambda path, seconds: recorded.append((path, seconds)) or True,
+        )
+
+        monitor = TrackMonitor(audio=_mock_audio(playing=True))
+        loop = asyncio.get_running_loop()
+        monitor._last_track = str(sid)
+        monitor._was_playing = True
+        monitor._cached_song_length = 0
+        monitor._total_time_cached = True
+        monitor._track_started_at = loop.time() - 181
+        state = type(
+            "State", (), {"is_playing": True, "current_track": str(sid)}
+        )()
+        ended = []
+
+        async def on_end(s):
+            ended.append(1)
+            s.is_playing = False
+
+        await monitor._tick(state, on_end, None, None)
+        assert len(ended) == 1
+        assert recorded == []
 
 
 class TestMonitorHelpers:

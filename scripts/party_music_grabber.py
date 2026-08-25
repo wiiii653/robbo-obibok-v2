@@ -49,7 +49,7 @@ DEMOZOO_UA = "curl/8.5.0"  # UA, ktory przechodzi przez Cloudflare na demozoo.or
 DEMOZOO_API = "https://demozoo.org/api/v1"
 SCENE_ORG = "files.scene.org"
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
-MAX_ARCHIVE_MEMBERS = 500
+MAX_ARCHIVE_MEMBERS = 5000  # HVSC monthly updates carry ~650+ members (2026-08)
 MAX_ARCHIVE_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_REDIRECTS = 5
 

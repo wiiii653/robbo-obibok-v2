@@ -156,9 +156,9 @@ def _list_7z_members(archive: Path) -> list[tuple[str, int]] | None:
         if not name or not attributes:
             log("  !! archiwum zawiera wpis bez pełnych metadanych")
             return None
-        mode = attributes.split()[-1] if attributes.split() else ""
+        mode = attributes.split()[-1].lower() if attributes.split() else ""
         if any(key in values for key in ("Symbolic Link", "Hard Link", "Reparse Point")) or (
-            mode and mode[0] not in {"-", "d"}
+            mode and mode[0] not in {"-", "d", "a"}
         ):
             log(f"  !! archiwum zawiera link lub plik specjalny: {name}")
             return None
@@ -267,6 +267,16 @@ def apply_hvsc_update(extract_dir: Path) -> int:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, dst)
                 moved += 1
+    # Fresh ground-truth lengths ship in update/DOCUMENTS — copy them over
+    # the archive copy so src/songlengths.py resolves durations against
+    # the CURRENT HVSC version, not the last full install.
+    docs_len = upd / "DOCUMENTS" / "Songlengths.md5"
+    if docs_len.is_file():
+        dst = extract_dir / "DOCUMENTS" / "Songlengths.md5"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(docs_len, dst)
+        entries = dst.read_text(errors="replace").count("=")
+        log(f"    Songlengths.md5 odświeżony ({entries} wpisów)")
     log(f"    update wtopiony: {moved} plików (new=587, fix=43 — wg newsów)")
     return moved
 

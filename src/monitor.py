@@ -9,6 +9,7 @@ from typing import Awaitable, Callable
 
 from .audio import AudioController
 from .models import PlaybackState
+from .songlengths import lookup_sid_total_time, record_sid_length
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,11 @@ DEFAULT_TIMEOUT = 600
 CONSOLE_TIMEOUT = 3600
 CONSOLE_TIMEOUT_UNKNOWN = 180
 SAP_LOOP_TIMEOUT = 3600
+# Some decoders (libgme console formats, e.g. NSF) only report song length
+# once playback has started; probing too early yields <= 0. Keep retrying
+# this long before accepting "unknown" — an early wrong cache falls through
+# to CONSOLE_TIMEOUT_UNKNOWN (180s) and audibly cuts the track.
+SONG_LENGTH_RETRY_SECONDS = 10
 
 
 def is_console_format(filepath: str) -> bool:
@@ -36,6 +42,23 @@ def compute_timeout(song_len: int, *, is_console_format: bool = False) -> int:
     if 10 < song_len < 36000:
         return min(song_len + 1, DEFAULT_TIMEOUT)
     return DEFAULT_TIMEOUT
+
+
+def maybe_learn_sid_length(filepath: str, played_seconds: float) -> bool:
+    """Persist a naturally-measured SID duration into the learned database.
+
+    Only SIDs missing from every Songlengths source are taught: known ones
+    already get exact timeouts, and re-recording them would just bake
+    measurement noise into the database. Sub-10s measurements are noise.
+    """
+    lower = filepath.lower()
+    if not lower.endswith((".sid", ".psid", ".rsid")):
+        return False
+    if played_seconds < 10:
+        return False
+    if lookup_sid_total_time(filepath) is not None:
+        return False
+    return record_sid_length(filepath, int(played_seconds))
 
 
 def should_confirm_output_drop(
@@ -188,6 +211,7 @@ class TrackMonitor:
                     self._not_playing_since, now, grace, still_loaded=still_loaded
                 )
                 if should_advance:
+                    self._learn_natural_end(state)
                     logger.info("Track ended (not playing for %ds)", grace)
                     self._drop_confirmed_since = None
                     self._was_playing = False
@@ -249,12 +273,21 @@ class TrackMonitor:
 
         self._last_output = elapsed
 
-        # Cache song_length once per track
+        # Cache song_length once per track — but only accept it once it is
+        # positive. Some decoders (NSF via libgme) report length only after
+        # playback actually starts, so the first probes return <= 0.
         if self._cached_song_length < 0:
             if hasattr(self.audio, "async_song_length"):
                 self._cached_song_length = await self.audio.async_song_length()
             else:
                 self._cached_song_length = self.audio.song_length()
+            if (
+                self._cached_song_length <= 0
+                and asyncio.get_running_loop().time() - self._track_started_at
+                < SONG_LENGTH_RETRY_SECONDS
+            ):
+                # Keep retrying before accepting "unknown" (180s fallback).
+                self._cached_song_length = -1
         # Header parsing and the audtool query done by total_*_time() may take
         # seconds.  Calculate it once per track away from the Discord event
         # loop, rather than doing it in every 0.25-second monitor tick.
@@ -293,6 +326,8 @@ class TrackMonitor:
             now = asyncio.get_running_loop().time()
             track_time = now - self._track_started_at
             if track_time >= timeout:
+                if timeout != CONSOLE_TIMEOUT_UNKNOWN:
+                    self._learn_natural_end(state)
                 logger.info("Track timeout (wall %ds >= %ds)", track_time, timeout)
                 self._was_playing = False
                 state.is_playing = False
@@ -304,3 +339,15 @@ class TrackMonitor:
             state.is_playing = False
             await on_track_end(state)
             return
+
+    def _learn_natural_end(self, state: PlaybackState) -> None:
+        """Teach the learned-lengths db how long the finishing SID really was."""
+        filepath = state.current_track
+        if not filepath:
+            return
+        try:
+            played = asyncio.get_running_loop().time() - self._track_started_at
+            if maybe_learn_sid_length(filepath, played):
+                logger.info("Learned SID length (%ds) for %s", int(played), filepath)
+        except Exception as exc:  # noqa: BLE001 — never break track advance
+            logger.debug("SID length learning failed for %s: %s", filepath, exc)

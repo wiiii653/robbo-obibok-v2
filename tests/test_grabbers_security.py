@@ -64,6 +64,51 @@ def test_extract_rejects_unsafe_7z_members(tmp_path, monkeypatch, member_block):
     assert [call[1] for call in calls] == ["l"]
 
 
+@pytest.mark.parametrize(
+    "member_block",
+    [
+        # HVSC update archives use Windows-style attributes (7-zip on
+        # Windows): DAI = directory, A / AI = regular file.
+        "Path = update/DOCUMENTS\nSize = 0\nAttributes = DAI",
+        "Path = update/new/MUSICIAN.sid\nSize = 1234\nAttributes = AI",
+        "Path = update/fix/tune.sid\nSize = 2048\nAttributes = A",
+    ],
+)
+def test_extract_accepts_windows_style_7z_attributes(
+    tmp_path, monkeypatch, member_block
+):
+    calls: list[list[str]] = []
+    listing = f"Path = archive.7z\nType = 7z\n----------\n{member_block}\n\n"
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        if cmd[1] == "l":
+            return subprocess.CompletedProcess(cmd, 0, stdout=listing, stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(fetch_archives.subprocess, "run", fake_run)
+
+    assert fetch_archives.extract(tmp_path / "archive.7z", tmp_path / "out")
+
+
+def test_extract_still_rejects_real_symlinks_with_windows_attrs(
+    tmp_path, monkeypatch
+):
+    listing = (
+        "Path = archive.7z\nType = 7z\n----------\n"
+        "Path = linked.mod\nSize = 1\nAttributes = A_ lrwxrwxrwx\nSymbolic Link = target\n\n"
+    )
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[1] == "l":
+            return subprocess.CompletedProcess(cmd, 0, stdout=listing, stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(fetch_archives.subprocess, "run", fake_run)
+
+    assert not fetch_archives.extract(tmp_path / "archive.7z", tmp_path / "out")
+
+
 @pytest.mark.parametrize("version", ["abc", "1/2"])
 def test_hvsc_plan_rejects_invalid_versions(tmp_path, monkeypatch, version):
     monkeypatch.setattr(fetch_archives, "ARCHIVIUM", tmp_path)

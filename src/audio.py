@@ -10,6 +10,8 @@ import subprocess
 import time
 from dataclasses import dataclass
 
+from .songlengths import lookup_sid_total_time
+
 logger = logging.getLogger(__name__)
 
 MIN_VOLUME = 0
@@ -520,8 +522,12 @@ def disable_repeat() -> None:
 
 
 def setup_sid_config() -> None:
+    # Safety net ONLY — the monitor derives real durations from
+    # Songlengths.md5 (src/songlengths.py). 900s bounds runaway SIDs whose
+    # MD5 is in neither the plugin's nor our database (was 180s, which
+    # audibly cut every SID the plugin could not resolve).
     _audtool_call("config-set", "SID Player:playMaxTimeEnable", "TRUE")
-    _audtool_call("config-set", "SID Player:playMaxTime", "180")
+    _audtool_call("config-set", "SID Player:playMaxTime", "900")
     _audtool_call("config-set", "SID Player:playMaxTimeUnknown", "TRUE")
     logger.info("Audacious SID plugin config set")
 
@@ -717,9 +723,11 @@ class AudioController:
     def total_sid_time(self) -> int | None:
         """Return total playback time for multi-song SID, or None.
 
-        SID files can contain multiple subtunes. Audacious cycles
-        through all subtunes via playMaxTime=180s each, so the
-        total playback time is song_length() × number of songs.
+        Ground truth is the HVSC Songlengths.md5 database (all subsongs
+        summed) — it covers files whose MD5 the sidplayfp plugin cannot
+        resolve, which the plugin then hard-caps at playMaxTime (audible
+        cut). Falls back to the old estimate: song_length() × songs from
+        the PSID/RSID header.
         """
         fname = self._last_filepath or current_song_filename()
         if not (
@@ -728,6 +736,9 @@ class AudioController:
             or fname.lower().endswith(".rsid")
         ):
             return None
+        db_total = lookup_sid_total_time(fname)
+        if db_total is not None:
+            return db_total
         songs = _get_sid_songs_count(fname)
         if songs <= 1:
             return None
