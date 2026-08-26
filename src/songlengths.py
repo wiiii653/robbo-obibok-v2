@@ -166,9 +166,7 @@ def lookup_sid_total_time(filepath: str, *, db_path: str | None = None) -> int |
     if not lower.endswith((".sid", ".psid", ".rsid")):
         return None
     try:
-        digest = hashlib.md5(
-            Path(filepath).read_bytes(), usedforsecurity=False
-        ).hexdigest()
+        digest = hashlib.md5(Path(filepath).read_bytes(), usedforsecurity=False).hexdigest()
     except OSError:
         return None
     text = Path(db_path).read_text(errors="replace") if db_path else _load_db()
@@ -200,9 +198,7 @@ def record_sid_length(filepath: str, seconds: int) -> bool:
         return False
     global _db_text
     try:
-        digest = hashlib.md5(
-            Path(filepath).read_bytes(), usedforsecurity=False
-        ).hexdigest()
+        digest = hashlib.md5(Path(filepath).read_bytes(), usedforsecurity=False).hexdigest()
     except OSError:
         return False
     value = f"{seconds // 60}:{seconds % 60:02d}"
@@ -214,11 +210,7 @@ def record_sid_length(filepath: str, seconds: int) -> bool:
                 for line in path.read_text(errors="replace").splitlines():
                     key, sep, val = line.partition("=")
                     key = key.strip().lower()
-                    if (
-                        sep
-                        and len(key) == 32
-                        and all(c in "0123456789abcdef" for c in key)
-                    ):
+                    if sep and len(key) == 32 and all(c in "0123456789abcdef" for c in key):
                         entries[key] = val.strip()
             entries[digest] = value
             body = "[Database]\n" + "".join(f"{k}={v}\n" for k, v in entries.items())

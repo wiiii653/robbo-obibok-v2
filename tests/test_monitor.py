@@ -60,7 +60,6 @@ class TestComputeTimeout:
     def test_console_length_capped_at_3600(self):
         assert compute_timeout(5000, is_console_format=True) == CONSOLE_TIMEOUT
 
-
     def test_known_length_capped_at_600(self):
         assert compute_timeout(5000) == 600
 
@@ -128,9 +127,7 @@ class TestNaturalEndLearning:
         monitor._was_playing = True
         monitor._not_playing_since = loop.time() - 10
         monitor._track_started_at = loop.time() - 212
-        state = type(
-            "State", (), {"is_playing": True, "current_track": str(sid)}
-        )()
+        state = type("State", (), {"is_playing": True, "current_track": str(sid)})()
         ended = []
 
         async def on_end(s):
@@ -161,9 +158,7 @@ class TestNaturalEndLearning:
         monitor._cached_song_length = 100
         monitor._total_time_cached = True
         monitor._track_started_at = loop.time() - 101
-        state = type(
-            "State", (), {"is_playing": True, "current_track": str(sid)}
-        )()
+        state = type("State", (), {"is_playing": True, "current_track": str(sid)})()
         ended = []
 
         async def on_end(s):
@@ -192,9 +187,7 @@ class TestNaturalEndLearning:
         monitor._cached_song_length = 0
         monitor._total_time_cached = True
         monitor._track_started_at = loop.time() - 181
-        state = type(
-            "State", (), {"is_playing": True, "current_track": str(sid)}
-        )()
+        state = type("State", (), {"is_playing": True, "current_track": str(sid)})()
         ended = []
 
         async def on_end(s):

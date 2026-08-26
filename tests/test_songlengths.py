@@ -3,6 +3,8 @@
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from src import songlengths
 from src.songlengths import (
     candidate_db_paths,
@@ -12,8 +14,6 @@ from src.songlengths import (
     record_sid_length,
     reset_cache,
 )
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -66,9 +66,7 @@ class TestCustomDbPath:
         assert custom_db_path().endswith("/var/songlengths_custom.md5")
 
     def test_root_dir_override(self, tmp_path):
-        assert custom_db_path(str(tmp_path)) == str(
-            tmp_path / "var" / "songlengths_custom.md5"
-        )
+        assert custom_db_path(str(tmp_path)) == str(tmp_path / "var" / "songlengths_custom.md5")
 
 
 class TestRecordSidLength:
@@ -121,9 +119,7 @@ class TestRecordSidLength:
         reset_cache()
         assert lookup_sid_total_time(str(sid)) == 200
 
-    def test_merged_db_prefers_last_source_for_same_digest(
-        self, tmp_path, monkeypatch
-    ):
+    def test_merged_db_prefers_last_source_for_same_digest(self, tmp_path, monkeypatch):
         import src.songlengths as sl
 
         sid = self._sid(tmp_path)
@@ -141,9 +137,7 @@ class TestRecordSidLength:
 
 class TestLookupSidTotalTime:
     @staticmethod
-    def _make_sid(
-        tmp_path: Path, name: str = "tune.sid", filler: bytes = b"\x00"
-    ) -> Path:
+    def _make_sid(tmp_path: Path, name: str = "tune.sid", filler: bytes = b"\x00") -> Path:
         sid = tmp_path / name
         sid.write_bytes(b"PSID" + filler * 120)
         return sid
