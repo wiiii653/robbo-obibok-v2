@@ -575,6 +575,37 @@ class PlaybackCog(commands.Cog):
                 self._get_fallback_ctx(guild.me, vc), self.bot.get_state(guild_id)
             )
 
+    async def _recover_silent_source(self, ctx, state: PlaybackState) -> None:
+        """Rebuild the audio pipeline when the silence watchdog detects a dead
+        audacious->PipeWire stream.
+
+        audtool can keep reporting 'playing' with a advancing clock while the
+        monitor carries no signal (~-91 dB) — a stale sink-input from a previous
+        connect/disconnect. Forcing a fresh audacious (kill + start) creates a
+        brand-new stream that reconnects to the sink, then we replay the current
+        track and re-install the monitor.
+        """
+        guild_id = ctx.guild.id
+        logger.error(
+            "silence watchdog: rebuilding audio pipeline for guild %s (current=%s)",
+            guild_id,
+            state.current_track,
+        )
+        # Stop the old monitor so it can't race the replay with track-end logic.
+        await self.bot.cancel_monitor(guild_id)
+        # Kill audacious and start a fresh instance -> new PipeWire stream.
+        await asyncio.to_thread(self.bot.engine.audio.kill)
+        await asyncio.to_thread(self.bot.engine.audio.setup)
+        # Replay the current track into the fresh player.
+        track = await self.bot.engine.play_track(state)
+        if not track:
+            await self._finish_playback(ctx, state, "Silence watchdog: no track to replay")
+            return
+        if not ctx.voice_client and ctx.guild:
+            ctx.voice_client = ctx.guild.voice_client
+        await self._replace_monitor(ctx, state)
+        await self._after_track_started(ctx, state)
+
     def _install_monitor(self, ctx: commands.Context, state: PlaybackState) -> None:
         if not ctx.guild:
             return
@@ -640,6 +671,12 @@ class PlaybackCog(commands.Cog):
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
 
+        async def on_silent_source() -> None:
+            # Rebuild the audio pipeline in a *separate* task so we never cancel
+            # the very monitor task that fired this callback (cancel_monitor
+            # refuses to cancel the current task).
+            asyncio.create_task(self._recover_silent_source(ctx, state))
+
         def get_voice_members() -> int:
             return self._voice_member_count(ctx)
 
@@ -654,6 +691,7 @@ class PlaybackCog(commands.Cog):
                     on_empty,
                     get_voice_members,
                     get_voice_connected,
+                    on_silent_source,
                 )
             except asyncio.CancelledError:
                 raise

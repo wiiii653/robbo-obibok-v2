@@ -592,6 +592,43 @@ def _move_to_sink(sink_name: str) -> None:
             logger.info("Moved audacious to sink %s", sink_name)
 
 
+def monitor_is_silent(sink_name: str, *, db_threshold: float = -70.0) -> bool:
+    """Probe the sink monitor and report whether no audio signal is flowing.
+
+    Unlike audtool playback-status (which reports the decoder's *claim* of
+    playing), this measures the real audio at the monitor. A dead
+    audacious->PipeWire stream leaves the monitor at digital silence (~-91 dB)
+    even while audtool reports 'playing' and the clock advances. Returns False
+    on a probe failure so we never false-positive on a transient error.
+    """
+    env = {**os.environ, "LC_ALL": "C"}
+    probe = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "pulse",
+        "-i",
+        f"{sink_name}.monitor",
+        "-t",
+        "2",
+        "-af",
+        "volumedetect",
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        result = subprocess.run(probe, capture_output=True, text=True, timeout=8, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    match = re.search(r"max_volume:\s*(-?[\d.]+)\s*dB", result.stderr)
+    if not match:
+        return False
+    return float(match.group(1)) < db_threshold
+
+
 def _audtool_call(*args: str) -> bool:
     try:
         result = subprocess.run(
@@ -635,6 +672,9 @@ class AudioController:
 
     async def async_is_playing(self) -> bool:
         return await asyncio.to_thread(is_playing)
+
+    def monitor_is_silent(self, *, db_threshold: float = -70.0) -> bool:
+        return monitor_is_silent(self.sink_name, db_threshold=db_threshold)
 
     def output_length(self) -> int:
         return output_length()

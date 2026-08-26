@@ -98,6 +98,12 @@ class TrackMonitor:
     audio: AudioController
     empty_timeout: int = 0
     get_voice_connected: Callable[[], bool] | None = None
+    # Silence watchdog: probe the monitor for real signal while audtool claims
+    # playing. If the monitor stays at digital silence for `silence_probe_streak`
+    # consecutive probes, the audacious->PipeWire stream is dead (not an audiable
+    # quiet track) and on_silent_source() is fired to rebuild the pipeline.
+    silence_probe_interval: float = 60.0
+    silence_probe_streak: int = 2
     _last_output: int = field(default=0, init=False, repr=False)
     _last_track: str = field(default="", init=False, repr=False)
     _cached_song_length: int = field(default=-1, init=False, repr=False)
@@ -108,6 +114,8 @@ class TrackMonitor:
     _drop_confirmed_since: float | None = field(default=None, init=False, repr=False)
     _track_started_at: float = field(default=0.0, init=False, repr=False)
     _was_playing: bool = field(default=False, init=False, repr=False)
+    _silent_probe_at: float = field(default=0.0, init=False, repr=False)
+    _silent_streak: int = field(default=0, init=False, repr=False)
 
     async def monitor_loop(
         self,
@@ -116,6 +124,7 @@ class TrackMonitor:
         on_empty: Callable[[], Awaitable[None]] | None = None,
         get_voice_members: Callable[[], int] | None = None,
         get_voice_connected: Callable[[], bool] | None = None,
+        on_silent_source: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         if get_voice_connected is None:
             get_voice_connected = self.get_voice_connected
@@ -129,12 +138,19 @@ class TrackMonitor:
         self._drop_confirmed_since = None
         self._track_started_at = asyncio.get_running_loop().time()
         self._was_playing = False
+        self._silent_probe_at = self._track_started_at
+        self._silent_streak = 0
 
         while True:
             await asyncio.sleep(0.25)
             try:
                 await self._tick(
-                    state, on_track_end, on_empty, get_voice_members, get_voice_connected
+                    state,
+                    on_track_end,
+                    on_empty,
+                    get_voice_members,
+                    get_voice_connected,
+                    on_silent_source,
                 )
                 if not state.is_playing:
                     return
@@ -150,6 +166,7 @@ class TrackMonitor:
         on_empty: Callable[[], Awaitable[None]] | None,
         get_voice_members: Callable[[], int] | None,
         get_voice_connected: Callable[[], bool] | None = None,
+        on_silent_source: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         if not state.is_playing:
             return
@@ -220,6 +237,34 @@ class TrackMonitor:
             return
 
         self._not_playing_since = None
+
+        # Silence watchdog: verify the monitor carries real audio while the
+        # decoder claims to be playing. A dead audacious->PipeWire stream stays
+        # at digital silence (~-91 dB) even though audtool advances — that shows
+        # up as "playing" everywhere except the monitor itself.
+        if on_silent_source is not None and self.silence_probe_interval > 0:
+            now = asyncio.get_running_loop().time()
+            if now - self._silent_probe_at >= self.silence_probe_interval:
+                self._silent_probe_at = now
+                silent = await asyncio.to_thread(self.audio.monitor_is_silent)
+                if silent:
+                    self._silent_streak += 1
+                    logger.warning(
+                        "silence watchdog: monitor silent (probe %d/%d)",
+                        self._silent_streak,
+                        self.silence_probe_streak,
+                    )
+                    if self._silent_streak >= self.silence_probe_streak:
+                        logger.error(
+                            "silence watchdog: monitor dead after %d probes — recovering",
+                            self._silent_streak,
+                        )
+                        self._silent_streak = 0
+                        self._silent_probe_at = now
+                        await on_silent_source()
+                else:
+                    self._silent_streak = 0
+
         if not self._was_playing:
             if is_console_format(state.current_track):
                 self._track_started_at = asyncio.get_running_loop().time()

@@ -358,7 +358,12 @@ class TestPlaybackLogic:
         cog._play_and_monitor = AsyncMock()
 
         async def monitor_once(
-            monitored_state, on_track_end, on_empty, get_voice_members, get_voice_connected=None
+            monitored_state,
+            on_track_end,
+            on_empty,
+            get_voice_members,
+            get_voice_connected=None,
+            on_silent_source=None,
         ):
             await on_track_end(monitored_state)
 
