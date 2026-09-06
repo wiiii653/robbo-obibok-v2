@@ -99,7 +99,7 @@ def main() -> int:
             if not pdetail:
                 print("    (brak szczegolow produkcji)")
                 continue
-            ok, sk = process_production(
+            ok, sk, _dupes = process_production(
                 pdetail, compo, placement, pname, legacy_root, args.dry_run, legacy=False
             )
             downloaded += ok

@@ -540,16 +540,16 @@ def process_production(
     dry: bool,
     *,
     legacy: bool = False,
-) -> tuple[int, int]:
-    """Pobiera/planuje pliki produkcji. Zwraca (pobrane, pominiete)."""
+) -> tuple[int, int, int]:
+    """Pobiera/planuje pliki produkcji. Zwraca (pobrane, pominiete, duplikaty)."""
     base = party_root / "legacy" if legacy else party_root
     prefix = "legacy/" if legacy else ""
     links = prod.get("download_links", []) if isinstance(prod, dict) else []
     if not isinstance(links, list) or not links:
         title = prod.get("title") if isinstance(prod, dict) else None
         print(f"    {placement}. {title!r} — brak linków (pomijam)")
-        return 0, 1
-    ok = skip = 0
+        return 0, 1, 0
+    ok = skip = dupes = 0
     for link in links:
         try:
             if not isinstance(link, dict):
@@ -608,7 +608,7 @@ def process_production(
                     target = copy_deduped(cand, base / sub / fname_out)
                     if target == Path():
                         print(f"      = {prefix}{sub}/{fname_out} (duplikat)")
-                        skip += 1
+                        dupes += 1
                         continue
                     print(f"      ✓ {prefix}{sub}/{target.name}")
                     ok += 1
@@ -616,7 +616,7 @@ def process_production(
             print(f"      ! link pominięty: {exc}")
             skip += 1
             continue
-    return ok, skip
+    return ok, skip, dupes
 
 
 def rebuild_cache(party_root: Path, cache_path: Path) -> None:
@@ -639,6 +639,39 @@ def rebuild_cache(party_root: Path, cache_path: Path) -> None:
     print(f"[cache] {len(entries)} tracków -> {cache_path.name}")
 
 
+def _load_retry(path: Path) -> dict[int, int]:
+    """Wczytaj rejestr party do ponowienia {party_id: liczba_probow}."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {int(k): int(v) for k, v in data.items() if str(k).isdigit() and str(v).isdigit()}
+
+
+def _save_retry(path: Path, retry: dict[int, int]) -> None:
+    """Zapisz rejestr ponowień atomowo (mkstemp + os.replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".part")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(dict(sorted(retry.items())), fh, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _prod_has_links(prod_dict: dict) -> bool:
+    """Czy produkcja ma cokolwiek w download_links (czyli jest realny plik)."""
+    links = prod_dict.get("download_links", [])
+    return isinstance(links, list) and any(
+        isinstance(link, dict) and isinstance(link.get("url"), str) and link["url"].strip()
+        for link in links
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Party Music Grabber (Demozoo -> Robbo archive).")
     ap.add_argument(
@@ -652,24 +685,39 @@ def main() -> int:
     ap.add_argument(
         "--party-dir", type=Path, help="katalog archiwum party (domyslnie archiwum/party)"
     )
+    ap.add_argument(
+        "--retry-max",
+        type=int,
+        default=4,
+        help="ile razy ponowic party, ktore mialo linki, ale 0 pobranych (domyslnie 4)",
+    )
     args = ap.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
     party_root = args.party_dir or (load_archive_root(root_dir) / "party")
     cache_path = root_dir / "party_cache_local.json"
+    retry_path = root_dir / "var" / "party_retry.json"
 
     today = time.strftime("%Y-%m-%d")
     cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - args.window_days * 86400))
-    print(f"== Party Music Grabber | okno: {cutoff}..{today} | top={args.top} ==")
+    print(
+        f"== Party Music Grabber | okno: {cutoff}..{today} | top={args.top} | retry-max={args.retry_max} =="
+    )
 
-    # 1. party
+    # rejestr ponowień: party, ktore mialy linki, ale 0 pobranych (siec itp.)
+    retry = _load_retry(retry_path)
+
+    # 1. party z okna + zapamietane do ponowienia (nawet poza oknem)
     print("[1/4] Pobieram listę party z Demozoo...")
-    parties = fetch_all_parties(cutoff)
-    parties.sort(key=lambda p: p.get("end_date") or "", reverse=True)
-    print(f"      -> {len(parties)} party w oknie")
-    if not parties:
-        print("Brak party w oknie — nic do roboty.")
-        return 0
+    window_parties = fetch_all_parties(cutoff)
+    window_parties.sort(key=lambda p: p.get("end_date") or "", reverse=True)
+    by_id = {p.get("id"): p for p in window_parties if isinstance(p.get("id"), int)}
+    retry_ids = sorted(retry.keys())
+    for rid in retry_ids:
+        by_id.setdefault(rid, {"id": rid, "name": f"(retry id={rid})", "end_date": ""})
+    parties = [by_id[i] for i in sorted(by_id.keys())]
+    in_window = len(window_parties)
+    print(f"      -> {in_window} party w oknie, +{len(retry_ids)} do ponowienia = {len(parties)}")
 
     downloaded = skipped = 0
     for p in parties:
@@ -678,15 +726,23 @@ def main() -> int:
             print("  (nieprawidłowy wpis party)")
             continue
         pname = p.get("name", "?")
-        print(f"\n— {pname} (id={pid}, {p.get('end_date')})")
+        flag = " [RETRY]" if pid in retry else ""
+        print(f"\n— {pname} (id={pid}, {p.get('end_date')}){flag}")
         detail = fetch_party_detail(pid)
         if not detail:
             print("  (brak szczegółów)")
+            if pid in retry:
+                retry[pid] = retry.get(pid, 0) + 1
             continue
         placements = get_music_placements(detail, args.top)
         if not placements:
             print("  (brak compo muzycznych)")
+            if pid in retry:
+                retry.pop(pid, None)
             continue
+        party_downloaded = 0
+        party_dupes = 0
+        party_had_link = False
         for compo, placement, prod in placements:
             try:
                 prod_id = prod.get("id")
@@ -697,19 +753,48 @@ def main() -> int:
                 if not isinstance(pdetail, dict):
                     print("    (brak szczegółów produkcji)")
                     continue
-                ok, sk = process_production(
+                if _prod_has_links(pdetail):
+                    party_had_link = True
+                ok, sk, dp = process_production(
                     pdetail, compo, placement, pname, party_root, args.dry_run
                 )
                 downloaded += ok
                 skipped += sk
+                party_downloaded += ok
+                party_dupes += dp
             except Exception as exc:
                 print(f"    ! produkcja pominięta: {exc}")
                 skipped += 1
             time.sleep(SLEEP_BETWEEN)
 
+        # aktualizacja rejestru ponowień
+        if pid in retry:
+            if party_downloaded > 0 or party_dupes > 0:
+                print(
+                    f"  ~ retry {pname!r}: pliki obecne "
+                    f"({party_downloaded} nowych, {party_dupes} duplikatów), usuwam z rejestru"
+                )
+                retry.pop(pid, None)
+            else:
+                retry[pid] += 1
+                if retry[pid] >= args.retry_max:
+                    print(
+                        f"  ~ retry {pname!r}: {retry[pid]}/{args.retry_max} prób bez skutku, "
+                        "wycofuję (pozostaje puste w archiwum)"
+                    )
+                    retry.pop(pid, None)
+        elif party_had_link and party_downloaded == 0 and party_dupes == 0 and not args.dry_run:
+            retry[pid] = 1
+            print(
+                "  ~ party miało linki do muzyki, ale 0 plików (ani nowych, ani duplikatów) "
+                "pobranych — zapisuję do ponowienia"
+            )
+
     print(
         f"\n== Wynik: {downloaded} plików {'w planie' if args.dry_run else 'pobranych'}, {skipped} pominiętych =="
     )
+    print(f"[rejestr ponowień] {len(retry)} party w kolejce: {sorted(retry.keys())}")
+    _save_retry(retry_path, retry)
     if not args.dry_run and not args.no_cache_rebuild:
         rebuild_cache(party_root, cache_path)
     return 0
