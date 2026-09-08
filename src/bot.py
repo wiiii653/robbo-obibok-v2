@@ -17,6 +17,16 @@ from .voice_streams import VoiceStreamManager
 
 logger = logging.getLogger(__name__)
 
+# Reconnect backoff / rate-limit guard. Discord caps voice connects to ~5/min
+# per session; without throttling, watchudog + discord.py's own retry loop flood
+# it and lock the bot in a 30s timeout spiral. These constants bound that.
+VOICE_RECONNECT_BACKOFF_BASE = 2.0  # seconds, exponential base
+VOICE_RECONNECT_BACKOFF_MAX = 45.0  # cap for the exponential backoff
+VOICE_RECONNECT_THROTTLE_WINDOW = 600  # rolling window (seconds)
+VOICE_RECONNECT_THROTTLE_MAX = 5  # max connect attempts per window per guild
+VOICE_RECONNECT_THROTTLE_BREAK = 60.0  # sleep after hitting the throttle cap
+VOICE_RECONNECT_COOLDOWN = 0.5  # min seconds between disconnect() and connect()
+
 
 class ObibokBot(commands.Bot):
     def __init__(
@@ -54,6 +64,7 @@ class ObibokBot(commands.Bot):
         self._playback_sessions: dict[int, int] = {}
         self._stream_restart_attempts: dict[int, int] = {}
         self._voice_reconnect_attempts: dict[int, int] = {}
+        self._voice_reconnect_times: dict[int, list[float]] = {}
         self._pending_voice_reconnects: set[int] = set()
         self._np_messages_max = 200
         self._started_at = time.monotonic()
@@ -198,7 +209,13 @@ class ObibokBot(commands.Bot):
         self._pending_voice_reconnects.add(guild_id)
 
     async def _retry_voice_reconnect(self, guild_id: int) -> None:
-        """Try one reconnect; watchdog ticks provide the 30-second retry interval."""
+        """Try one reconnect; watchdog ticks provide the 30-second retry interval.
+
+        Bounded by exponential backoff and a per-guild throttle so a flaky voice
+        endpoint (or a Discord that has started rate-limiting connects) collapses
+        into a few spaced attempts instead of hammering the rate limit and locking
+        the bot in a 30s timeout spiral.
+        """
         if guild_id not in self._pending_voice_reconnects:
             return
 
@@ -206,6 +223,44 @@ class ObibokBot(commands.Bot):
         guild = self.get_guild(guild_id)
         attempts = self._voice_reconnect_attempts.get(guild_id, 0) + 1
         self._voice_reconnect_attempts[guild_id] = attempts
+
+        # Per-guild throttle: keep a rolling window of recent attempt timestamps
+        # and bail out (leaving the guild pending) once the window is full, so we
+        # never exceed Discord's ~5 voice connects/min per session.
+        now = time.monotonic()
+        recent = [
+            t
+            for t in self._voice_reconnect_times.get(guild_id, [])
+            if now - t < VOICE_RECONNECT_THROTTLE_WINDOW
+        ]
+        if len(recent) >= VOICE_RECONNECT_THROTTLE_MAX:
+            logger.warning(
+                "Health watchdog: voice reconnect throttled for guild %s "
+                "(%d attempts in last %ds); holding %.0fs",
+                guild_id,
+                len(recent),
+                VOICE_RECONNECT_THROTTLE_WINDOW,
+                VOICE_RECONNECT_THROTTLE_BREAK,
+            )
+            await asyncio.sleep(VOICE_RECONNECT_THROTTLE_BREAK)
+            return
+        self._voice_reconnect_times[guild_id] = recent + [now]
+
+        # Exponential backoff (base^attempt, capped) so repeated failures wait
+        # longer between tries instead of staying at the 30s watchdog cadence.
+        backoff = min(
+            VOICE_RECONNECT_BACKOFF_BASE ** max(attempts, 1),
+            VOICE_RECONNECT_BACKOFF_MAX,
+        )
+        if attempts > 1:
+            logger.warning(
+                "Health watchdog: delaying voice reconnect for guild %s %.0fs (attempt %s)",
+                guild_id,
+                backoff,
+                attempts,
+            )
+            await asyncio.sleep(backoff)
+
         if not guild or not state.voice_channel_id:
             channel = None
         else:
@@ -221,6 +276,9 @@ class ObibokBot(commands.Bot):
                 vc = guild.voice_client
                 if vc:
                     await vc.disconnect()
+                    # Small pause so disconnect() respawns cleanly before connect;
+                    # rapid disconnect→connect also trips Discord's rate limit.
+                    await asyncio.sleep(VOICE_RECONNECT_COOLDOWN)
                 new_vc = await channel.connect()
                 if not self.try_acquire_lease(guild):
                     await new_vc.disconnect()
@@ -228,6 +286,7 @@ class ObibokBot(commands.Bot):
                 state.is_playing = True
                 self._pending_voice_reconnects.discard(guild_id)
                 self._voice_reconnect_attempts.pop(guild_id, None)
+                self._voice_reconnect_times.pop(guild_id, None)
                 playback_cog = self.get_cog("PlaybackCog")
                 if playback_cog:
                     await playback_cog._recover_voice(guild_id, new_vc)

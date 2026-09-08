@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import src.bot as src_bot_mod
 from src.bot import CollectionCog, FavoritesCog, ObibokBot, PlaybackCog
 from src.favorites import Favorites, PlaylistLibrary
 from src.models import PlaybackState
@@ -28,6 +29,52 @@ def _make_engine(tmp_path):
 def _make_bot(tmp_path):
     engine = _make_engine(tmp_path)
     return ObibokBot(engine=engine, monitor=MagicMock(), root_dir=str(tmp_path))
+
+
+class TestVoiceReconnectThrottle:
+    """Per-guild throttling + backoff on voice reconnect (regression for the
+    30s timeout-spiral that hammered Discord's ~5 voice connects/min limit)."""
+
+    @staticmethod
+    def _bot(tmp_path):
+        return _make_bot(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_throttle_holds_once_window_is_full(self, tmp_path):
+        bot = self._bot(tmp_path)
+        gid = 1234
+        bot._pending_voice_reconnects.add(gid)
+        # Pre-fill the rolling window with the max allowed attempts.
+        bot._voice_reconnect_times[gid] = [1000.0 - i for i in range(5)]
+        sleeps = []
+        with (
+            patch.object(src_bot_mod, "VOICE_RECONNECT_THROTTLE_MAX", 5),
+            patch.object(src_bot_mod, "VOICE_RECONNECT_THROTTLE_BREAK", 60.0),
+            patch("time.monotonic", return_value=1000.0),
+            patch("asyncio.sleep", new=AsyncMock(side_effect=lambda s: sleeps.append(s))),
+        ):
+            await bot._retry_voice_reconnect(gid)
+        # The window is full => we held off instead of connecting.
+        assert sleeps and sleeps[-1] == 60.0
+        assert gid in bot._pending_voice_reconnects  # still pending, no connect ran
+
+    @pytest.mark.asyncio
+    async def test_backoff_grows_with_attempts(self, tmp_path):
+        bot = self._bot(tmp_path)
+        gid = 5678
+        bot._pending_voice_reconnects.add(gid)
+        bot._voice_reconnect_attempts[gid] = 3  # already failed twice
+        sleeps = []
+        with (
+            patch.object(src_bot_mod, "VOICE_RECONNECT_THROTTLE_MAX", 99),
+            patch.object(src_bot_mod, "VOICE_RECONNECT_BACKOFF_BASE", 2.0),
+            patch.object(src_bot_mod, "VOICE_RECONNECT_BACKOFF_MAX", 45.0),
+            patch("asyncio.sleep", new=AsyncMock(side_effect=lambda s: sleeps.append(s))),
+        ):
+            # No voice channel => the function bails after recording the attempt,
+            # but not before sleeping the backoff for attempts>1.
+            await bot._retry_voice_reconnect(gid)
+        assert 16.0 in sleeps  # 2**4 = 16 for attempt 4
 
 
 class TestBotStateManagement:
