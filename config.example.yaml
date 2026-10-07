@@ -1,0 +1,39 @@
+# Robbo Obibok v2 — example configuration
+# Copy to config.yaml and adjust for your host:
+#   cp config.example.yaml config.yaml
+#
+# The Discord bot token is NEVER stored here — provide it via the
+# DISCORD_BOT_TOKEN environment variable (see .env.example).
+
+# Command prefix (default: !)
+command_prefix: "!"
+
+# Optional: restrict the bot to a single Discord server (guild ID).
+# Leave empty to allow any server the bot is invited to.
+guild_id: ""
+
+# Audio settings
+audio:
+  sink_name: "robbo_bot"
+
+# Playback
+playback:
+  loop: true      # true = loop queue (wrap to start when the playlist ends)
+  shuffle: true
+
+# Archive storage path — absolute path to the local chiptune archive.
+archive:
+  path: "/path/to/robbo-music"
+
+# Auto-start / auto-stop
+auto:
+  start_channel: "Chiptune Radio"  # voice channel name to auto-start (empty = disabled)
+  empty_timeout: 60                # seconds before disconnect when the channel is empty
+
+# Per-format volume overrides (file extension → volume percentage, default: 100)
+format_volumes:
+  sid: 115
+  mod: 115
+  xm: 115
+  s3m: 115
+  it: 115

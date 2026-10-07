@@ -6,10 +6,10 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +24,13 @@ jobs:
           name: robbo-obibok-${{ github.ref_name }}
           path: dist/*
           if-no-files-found: error
+      # Realny GitHub Release: tworzony wbudowanym `gh` (bez third-party action),
+      # z artefaktami z dist/ i notatkami generowanymi z historii commitów.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

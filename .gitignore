@@ -36,3 +36,6 @@ plugins/*/build/
 plugins/*/test_stsound
 plugins/*/test_asap
 plugins/*/*.o
+
+# Operator config (guild_id, lokalne sciezki) — uzyj config.example.yaml
+config.yaml
