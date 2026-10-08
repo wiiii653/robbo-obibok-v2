@@ -39,3 +39,7 @@ plugins/*/*.o
 
 # Operator config (guild_id, lokalne sciezki) — uzyj config.example.yaml
 config.yaml
+
+# Vendored autotools junk (regenerable by ./configure)
+autom4te.cache/
+*~

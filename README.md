@@ -284,7 +284,19 @@ Collection files are resolved under the configurable `archive.path` root.
 
 ## Configuration
 
-Edit `config.yaml`:
+Create your configuration from the template, then edit it:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+`config.yaml` is **git-ignored** — it holds host-specific values. If the file is
+absent, the bot starts with built-in defaults (the archive then resolves to
+`./archiwum`). The Discord token is **never** stored here: it is read from the
+`DISCORD_BOT_TOKEN` environment variable. `guild_id` must be a positive integer
+when set — never an empty string.
+
+```yaml
 
 ```yaml
 command_prefix: "!"
@@ -296,7 +308,7 @@ playback:
   loop: false           # true repeats the current track
   shuffle: true
 archive:
-  path: "/home/user/robbo-music"   # absolute path; relative also allowed
+  path: "/path/to/robbo-music"       # absolute path; relative also allowed
 auto:
   start_channel: ""      # voice channel name (empty = disabled)
   empty_timeout: 60      # seconds before disconnect when empty
@@ -337,11 +349,14 @@ robbo-obibok-v2/
 │   ├── stream.py            # Voice stream source
 │   ├── voice_streams.py      # Discord stream lifecycle ownership
 │   └── tools_cog.py         # Utility commands (!stats, !ocko, !help)
-├── tests/                   # 380+ unit tests
+├── tests/                   # 420+ unit tests
 ├── scripts/                 # Index builder scripts
 ├── deploy/                  # systemd service files
 ├── extras/                  # Assets (banner, avatar)
-├── config.yaml              # Runtime configuration
+├── config.example.yaml      # Template — copy to config.yaml
+├── config.yaml              # (git-ignored) your runtime configuration
+├── LICENSE                  # MIT (covers original code only)
+├── THIRD_PARTY_NOTICES.md   # Vendored plugin licenses (SC68 GPL-3, ASAP GPL-2)
 ├── pyproject.toml           # Dependencies + tool config
 ├── Makefile                 # Build/test commands
 ├── run_bot.sh               # Entrypoint wrapper
@@ -373,3 +388,13 @@ To adjust: edit `~/.config/audacious/config` and restart the bot.
 | `!play` says "Join a voice channel" | You must be in a voice channel when issuing the command |
 | Bot auto-disconnects too fast | Increase `auto.empty_timeout` in config |
 | SID metadata is empty | Some SID files lack embedded headers — filename is shown as fallback |
+
+## License
+
+Released under the **MIT License** — see [`LICENSE`](LICENSE).
+
+MIT covers this project's own code. The optional chiptune plugins under
+`plugins/` vendor third-party components under **their own licenses**: SC68
+(**GPL-3.0**), ASAP (**GPL-2.0**) and StSound (**MIT**). Read
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistributing the
+repository or shipping compiled plugin binaries.

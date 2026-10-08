@@ -9,8 +9,9 @@
 command_prefix: "!"
 
 # Optional: restrict the bot to a single Discord server (guild ID).
-# Leave empty to allow any server the bot is invited to.
-guild_id: ""
+# Must be a POSITIVE INTEGER when set, or omitted entirely (leave commented).
+# An empty string is INVALID and will abort startup.
+# guild_id: 123456789012345678
 
 # Audio settings
 audio:
