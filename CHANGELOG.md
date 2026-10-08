@@ -11,7 +11,7 @@ Pierwsze publiczne wydanie Robbo Obibok v2 — discordowego bota chiptune radio.
 **Packaging & CI**
 - Added packaging and dependency-audit checks to CI (ruff, pytest --cov, `python -m build`, pip-audit z udokumentowanym ignore).
 - Added LICENSE (MIT), autor/licencja/URL-e w metadanych paczki.
-- 10 kolekcji archiwum z indeksami budowanymi przez Makefile.
+- 10 kolekcji archiwum z indeksami budowanymi przez `make build-indexes`.
 
 **Deployment**
 - Added configurable systemd installation and service hardening (`deploy/`).

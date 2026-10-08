@@ -28,10 +28,19 @@ class TestAppConfig:
 
 
 class TestLoadConfig:
-    def test_repo_config_playback_loop_is_intentional(self):
-        config = load_config()
-        # The operator config intentionally overrides the code default (loop=False).
+    def test_playback_loop_override_is_honoured(self, tmp_path):
+        """An explicit operator override wins over the code default (loop=False)."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("playback:\n  loop: true\n")
+        config = load_config(config_path)
         assert config.playback.loop is True
+
+    def test_missing_config_file_uses_defaults(self, tmp_path):
+        """A fresh clone has no config.yaml — loading it must not raise."""
+        config = load_config(tmp_path / "no_such_config.yaml")
+        assert config.playback.loop is False
+        assert config.guild_id is None
+        assert config.archive_path == "archiwum"
 
     def test_load_default(self, tmp_path):
         config_path = tmp_path / "config.yaml"
