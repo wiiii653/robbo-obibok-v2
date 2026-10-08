@@ -38,7 +38,7 @@ robbo-obibok = "src.launcher:main"
 [project.urls]
 Repository = "https://github.com/wiiii653/robbo-obibok-v2"
 Issues = "https://github.com/wiiii653/robbo-obibok-v2/issues"
-Changelog = "https://github.com/wiiii653/robbo-obibok-v2/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/wiiii653/robbo-obibok-v2/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["src"]
