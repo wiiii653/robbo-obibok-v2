@@ -32,6 +32,11 @@ components, `LICENSE` for StSound) exactly as distributed upstream.
   Release) contain **no vendored plugin sources** — the packaging only includes
   the `src/` package. Building the optional plugins from source is a separate,
   opt-in step (`plugins/*/build.sh`).
+- Compiled plugins are **combined works** with the vendored components:
+  `sndh.so` links SC68 (GPL-3.0-or-later), `sap.so` links ASAP
+  (GPL-2.0-or-later). If you distribute such a binary, you must do so under
+  those terms — with the corresponding source and license notices. The
+  project's MIT license does **not** cover compiled plugin binaries.
 - Compiled plugin binaries (`plugins/*/*.so`) and their build directories are
   intentionally **not tracked** in git.
 

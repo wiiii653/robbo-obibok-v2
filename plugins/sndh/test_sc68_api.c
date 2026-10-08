@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ognjen (wiiii653)
+//
+// NOTE: this plugin is compiled against vendored GPL components
+// (SC68: GPL-3.0-or-later, ASAP: GPL-2.0-or-later, StSound: MIT).
+// The resulting .so is distributed under the terms of those components,
+// not under MIT alone. See THIRD_PARTY_NOTICES.md.
 /* Test sc68 API on a real file: disk load vs player load vs process. */
 #include <stdio.h>
 #include <stdlib.h>
