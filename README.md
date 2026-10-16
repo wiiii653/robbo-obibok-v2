@@ -297,8 +297,6 @@ absent, the bot starts with built-in defaults (the archive then resolves to
 when set — never an empty string.
 
 ```yaml
-
-```yaml
 command_prefix: "!"
 # Optional: restrict to a single server
 # guild_id: 123456789012345678
@@ -376,6 +374,42 @@ The bot enables Audacious's **Compressor** effect plugin at startup for consiste
 
 To verify: `audtool plugin-is-enabled compressor`
 To adjust: edit `~/.config/audacious/config` and restart the bot.
+
+### Volume and loudness (two gain stages)
+
+Two independent gain stages multiply before anything reaches Discord:
+
+| Stage | Where | Who sets it |
+|-------|-------|-------------|
+| Audacious master volume | `~/.config/audacious/config` → `[pipewire] volume_left/volume_right` | **nobody** — the bot never calls `audtool set-volume`; it is whatever the host has |
+| Per-format sink volume | `format_volumes` in `config.yaml` → `pactl set-sink-volume <sink> N%` | the bot, on every track change (by file extension) |
+
+**The Audacious slider is not linear.** Measured on a live stream (same track,
+same sink volume), moving it **90 → 100 raised the output by +5.3 dB** — sound
+peaks and integrated loudness agreed. Check yours with `audtool get-volume`
+and set it to 100 first; it is free headroom that no config can give you.
+
+After that, on a running bot with `format_volumes` at the defaults above:
+
+```
+tracker modules (.mod/.xm/.it/.s3m/.sid)  ≈ -16 LUFS, peak ≈ -3 dBFS
+mastered MP3 for reference               ≈ -14…-15 LUFS, peak ≈ 0 dBFS
+```
+
+ASMA/SAP (`.sap`, `.ay`, `.ym`, `.nsf`) stay at 100% sink volume and their
+source material is quieter — expect them ~5 dB below the modules. The fix is
+an entry in `format_volumes` (`sap: 150`), not a code change.
+
+To measure the real stream yourself (works while the bot plays):
+
+```bash
+XDG_RUNTIME_DIR=/run/user/1000 ffmpeg -y -t 30 -f pulse -i robbo_bot.monitor /tmp/live.wav
+ffmpeg -nostats -i /tmp/live.wav -af ebur128=peak=true:framelog=quiet -f null - 2>&1 | grep -E 'I:|Peak:'
+```
+
+`framelog=quiet` matters — without it `ebur128` prints one line per frame and
+buries the summary. Note the transport itself (`src/stream.py`) applies **no**
+gain or limiter filter; all level control happens upstream of it.
 
 ## Troubleshooting
 

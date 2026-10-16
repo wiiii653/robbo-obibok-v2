@@ -32,6 +32,21 @@ auto:
   empty_timeout: 60                # seconds before disconnect when the channel is empty
 
 # Per-format volume overrides (file extension → volume percentage, default: 100)
+#
+# These are PulseAudio/PipeWire SINK volumes (applied with `pactl set-sink-volume`
+# when a track starts) — NOT the Audacious master volume.
+#
+# ⚠️ Two gain stages stack: Audacious output volume × this sink volume.
+# The Audacious slider lives in ~/.config/audacious/config ([pipewire]
+# volume_left/volume_right) and the bot never touches it. Its scale is
+# strongly non-linear: measured on a live stream, 90 → 100% is worth
+# **+5.3 dB** (not +0.9 dB), so leave it at 100 unless you have a reason.
+#
+# Extensions missing from this map stay at 100% — which means the quieter
+# collections (.sap, .ay, .ym, .nsf) get no lift at all. Measured on a
+# running bot: tracker modules land at ~-16 LUFS (roughly mastered-MP3
+# loudness: -14…-15 LUFS), while ASMA/SAP sits ~5 dB lower. Raise those
+# entries (e.g. `sap: 150`) if your listeners complain.
 format_volumes:
   sid: 115
   mod: 115
