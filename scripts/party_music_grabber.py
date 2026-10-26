@@ -293,29 +293,85 @@ def _quote_url(url: str) -> str:
 # ------------------------------------------------------------- Demozoo ---
 
 
-def fetch_all_parties(cutoff_iso: str) -> list[dict]:
-    """Paginate po wszystkich party, zwroc te z cutoff <= end_date <= dzisiaj."""
+PARTY_LIST_CACHE = Path(__file__).resolve().parent.parent / "var" / "party_list_cache.json"
+LIST_CACHE_HOURS = 12
+MAX_LIST_PAGES = 120
+
+
+def _load_party_list_cache() -> list[dict] | None:
+    try:
+        raw = json.loads(PARTY_LIST_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    age_h = (time.time() - float(raw.get("fetched_at", 0))) / 3600
+    if age_h > LIST_CACHE_HOURS:
+        return None
+    parties = raw.get("parties")
+    if not isinstance(parties, list) or not parties:
+        return None
+    print(f"  [lista] {len(parties)} party z cache ({age_h:.1f} h)", file=sys.stderr)
+    return [p for p in parties if isinstance(p, dict)]
+
+
+def _save_party_list_cache(parties: list[dict]) -> None:
+    try:
+        PARTY_LIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PARTY_LIST_CACHE.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"fetched_at": time.time(), "parties": parties}), encoding="utf-8"
+        )
+        tmp.replace(PARTY_LIST_CACHE)
+    except OSError as exc:
+        print(f"  [lista] nie zapisano cache: {exc}", file=sys.stderr)
+
+
+def fetch_all_parties(cutoff_iso: str, refresh: bool = False) -> list[dict]:
+    """Paginate po wszystkich party, zwroc te z cutoff <= end_date <= dzisiaj.
+
+    API Demozoo nie filtruje po dacie (parametry sa ignorowane, count zawsze 5563),
+    a lista jest sortowana ALFABETYCZNIE — wiec kazdy przebieg musi przejsc wszystkie
+    ~56 stron. Dlatego trzymamy cache listy (PARTY_LIST_CACHE, domyslnie 12 h) i twardy
+    limit stron: przebieg potrafil zawiesic sie na jednej stronie bez konca
+    (zmierzone 2026-10-26: log zamarl na stronie 40 na 7 minut przy zdrowym API).
+    Niepielna lista NIE nadpisuje cache i krzyczy o tym na stderr.
+    """
     parties: list[dict] = []
-    page = 1
-    while True:
-        url = f"{DEMOZOO_API}/parties/?format=json&page_size=100&page={page}"
-        d = _get_json(url)
-        if not d:
-            break
-        if not isinstance(d, dict):
-            print("  [err] invalid party list response", file=sys.stderr)
-            break
-        results = d.get("results", [])
-        if not isinstance(results, list):
-            print("  [err] invalid party list results", file=sys.stderr)
-            break
-        parties.extend(p for p in results if isinstance(p, dict))
-        if not d.get("next"):
-            break
-        page += 1
-        if page % 20 == 0:
-            print(f"  ...strona {page}", file=sys.stderr)
-        time.sleep(SLEEP_BETWEEN)
+    cached = None if refresh else _load_party_list_cache()
+    if cached:
+        parties = cached
+    else:
+        page = 1
+        complete = False
+        while page <= MAX_LIST_PAGES:
+            url = f"{DEMOZOO_API}/parties/?format=json&page_size=100&page={page}"
+            d = _get_json(url)
+            if not d:
+                break
+            if not isinstance(d, dict):
+                print("  [err] invalid party list response", file=sys.stderr)
+                break
+            results = d.get("results", [])
+            if not isinstance(results, list):
+                print("  [err] invalid party list results", file=sys.stderr)
+                break
+            parties.extend(p for p in results if isinstance(p, dict))
+            if not d.get("next"):
+                complete = True
+                break
+            page += 1
+            if page % 10 == 0:
+                print(f"  ...strona {page}", file=sys.stderr)
+            time.sleep(SLEEP_BETWEEN)
+        if not complete:
+            print(
+                f"  [lista] NIEKOMPLETNA — przerwano na stronie {min(page, MAX_LIST_PAGES)}"
+                f"/{MAX_LIST_PAGES}; cache nietkniety, brakujace party moga zostac pominięte",
+                file=sys.stderr,
+            )
+        elif parties:
+            _save_party_list_cache(parties)
     today_iso = time.strftime("%Y-%m-%d")
     return [
         p
@@ -700,6 +756,11 @@ def main() -> int:
     ap.add_argument(
         "--window-days", type=int, default=45, help="okno czasowe w dniach (domyslnie 45)"
     )
+    ap.add_argument(
+        "--refresh-list",
+        action="store_true",
+        help="wymus ponowne sciagniecie listy party (domyslnie cache 12 h)",
+    )
     ap.add_argument("--top", type=int, default=5, help="ile top wynikow z compo (domyslnie 5)")
     ap.add_argument("--dry-run", action="store_true", help="tylko odkryj i pokaz plan")
     ap.add_argument(
@@ -732,7 +793,7 @@ def main() -> int:
 
     # 1. party z okna + zapamietane do ponowienia (nawet poza oknem)
     print("[1/4] Pobieram listę party z Demozoo...")
-    window_parties = fetch_all_parties(cutoff)
+    window_parties = fetch_all_parties(cutoff, args.refresh_list)
     window_parties.sort(key=lambda p: p.get("end_date") or "", reverse=True)
     by_id = {p.get("id"): p for p in window_parties if isinstance(p.get("id"), int)}
     retry_ids = sorted(retry.keys())
