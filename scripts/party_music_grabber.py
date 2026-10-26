@@ -26,6 +26,7 @@ Exit code: 0 = OK (nawet gdy nic nowego), 1 = blad krytyczny.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -553,16 +554,35 @@ def unpack_archive(path: Path, dest_dir: Path) -> bool:
 # ---------------------------------------------------------------- Run ---
 
 
-def dedupe_path(dest: Path, size: int) -> Path:
-    """Jesli plik o tej nazwie juz jest (ta sama wielkosc) -> skip (None).
-    Inny rozmiar -> dopisz ' (2)', ' (3)'..."""
-    if not dest.exists():
-        return dest
-    if dest.stat().st_size == size:
-        return Path()  # marker: duplikat (ta sama zawartosc)
-    stem, ext = dest.stem, dest.suffix
-    for i in range(2, 100):
-        cand = dest.with_name(f"{stem} ({i}){ext}")
+def _same_bytes(candidate: Path, source: Path) -> bool:
+    """Czy kandydat ma identyczna zawartosc jak source (po rozmiarze juz wiemy, ze tak)."""
+    try:
+        return hashlib.sha256(candidate.read_bytes()).digest() == hashlib.sha256(
+            source.read_bytes()
+        ).digest()
+    except OSError:
+        # Nie umiemy sprawdzic — lepiej uznac za duplikat niz mnozyc kopie tej samej muzyki.
+        return True
+
+
+def dedupe_path(dest: Path, size: int, source: Path | None = None) -> Path:
+    """Znajdz miejsce docelowe dla pliku; ``Path()`` = identyczna kopia juz istnieje.
+
+    Wczesniej rozmiar sprawdzano TYLKO dla nazwy bazowej, a ``(2)``, ``(3)``...
+    brane byly w ciemno — wiec przy dwoch roznych utworach o tej samej wielkosci
+    (np. 'Keep Running.it' i inny 'Keep Running') kazdy przebieg dokladal kolejna
+    kopie: (2), (3), (4), (5) po 9,4 MB (zmierzone 2026-10-26, 36 MB smieci).
+    Teraz skanujemy wszystkie kandydaty i porownujemy zawartosc (sha256), a nie
+    sam rozmiar.
+    """
+    candidates = [dest] + [
+        dest.with_name(f"{dest.stem} ({i}){dest.suffix}") for i in range(2, 100)
+    ]
+    for cand in candidates:
+        if cand.exists() and cand.stat().st_size == size:
+            if source is None or _same_bytes(cand, source):
+                return Path()  # marker: duplikat
+    for cand in candidates:
         if not cand.exists():
             return cand
     return Path()
@@ -573,7 +593,7 @@ def copy_deduped(source: Path, dest: Path) -> Path:
     size = source.stat().st_size
     dest.parent.mkdir(parents=True, exist_ok=True)
     for _attempt in range(100):
-        target = dedupe_path(dest, size)
+        target = dedupe_path(dest, size, source)
         if target == Path():
             return target
         fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".part")
