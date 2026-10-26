@@ -45,7 +45,10 @@ from pathlib import Path
 
 from index_config import is_track_file, load_archive_root
 
-DEMOZOO_UA = "curl/8.5.0"  # UA, ktory przechodzi przez Cloudflare na demozoo.org
+# Demozoo stoi za Cloudflarem, ktory od niedawna challenge'uje UA skryptowe: curl/*, Python-urllib/*
+# i ciag Mozilla/5.0 dostaja HTTP 403 "Just a moment...", a zwykly zadeklarowany bot-UA przechodzi
+# (pomiar 2026-10-26: robbo-grabber/1.0 -> 200 JSON, curl/8.5.0 -> 403, brak UA -> 403).
+DEMOZOO_UA = "robbo-grabber/1.0 (+https://github.com/wiiii653/robbo-obibok-v2)"
 DEMOZOO_API = "https://demozoo.org/api/v1"
 SCENE_ORG = "files.scene.org"
 MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024
@@ -531,6 +534,26 @@ def copy_deduped(source: Path, dest: Path) -> Path:
     return Path()
 
 
+TEMP_BASE = Path(__file__).resolve().parent.parent / "var" / "tmp"
+
+
+def _safe_tempdir() -> tempfile.TemporaryDirectory:
+    """Katalog tymczasowy, ktorego sciezka nie ma komponentu zaczynajacego sie od kropki.
+
+    ``is_junk_path()`` (index_config) odrzuca KAZDA sciezke z takim komponentem — a ``TMPDIR``
+    bywa ustawiony na cos w rodzaju ``~/.hermes/cache/scratch``. Wtedy kazdy rozpakowany plik
+    wyglada jak smiec i produkcja konczy sie cicho ``(0, 0, 0)`` bez zadnego bledu
+    (pomiar 2026-10-26: 21 plikow w planie, 0 zapisanych, cache dalej 75 trackow).
+    Dlatego trzymamy archiwa tymczasowe w ``var/tmp`` repo — sciezka bez kropek, ten sam dysk
+    co cel (szybkie kopiowanie). Fallback na domyslny TMPDIR, gdyby zapis nie wyszedl.
+    """
+    try:
+        TEMP_BASE.mkdir(parents=True, exist_ok=True)
+        return tempfile.TemporaryDirectory(prefix="party_", dir=str(TEMP_BASE))
+    except OSError:
+        return tempfile.TemporaryDirectory(prefix="party_")
+
+
 def process_production(
     prod: dict,
     compo: str,
@@ -579,7 +602,7 @@ def process_production(
                 ok += 1
                 continue
             # pobierz do tymczasowego katalogu
-            with tempfile.TemporaryDirectory(prefix="party_") as tmp:
+            with _safe_tempdir() as tmp:
                 tmp_dir = Path(tmp)
                 raw = tmp_dir / fname
                 print(f"      ↓ {fname} ({url})")
@@ -733,6 +756,15 @@ def main() -> int:
             print("  (brak szczegółów)")
             if pid in retry:
                 retry[pid] = retry.get(pid, 0) + 1
+                # Ten sam limit co przy nieudanym pobieraniu — bez niego party, ktorego
+                # szczegolow nie da sie pobrac (np. HTTP 403 od Cloudflare), wisialo
+                # w rejestrze na zawsze (zmierzone: 6 prob przy --retry-max 4).
+                if retry[pid] >= args.retry_max:
+                    print(
+                        f"  ~ retry {pname!r}: {retry[pid]}/{args.retry_max} prób bez szczegółów, "
+                        "wycofuję z rejestru"
+                    )
+                    retry.pop(pid, None)
             continue
         placements = get_music_placements(detail, args.top)
         if not placements:
