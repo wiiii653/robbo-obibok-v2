@@ -85,8 +85,24 @@ class PlaybackEngine:
     async def _start_radio_unlocked(
         self, state: PlaybackState, collection_id: str | None = None, user_id: int = 0
     ) -> str | None:
+        saved = None
+        if state.guild_id:
+            saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
         if collection_id:
             state.collection_mode = collection_id
+        elif isinstance(saved, dict):
+            # Po restarcie wroc do kolekcji, ktora grala ostatnio. Plik kolejki pamieta
+            # `collection_mode`, ale nikt go tu nie czytal — stan startowal zawsze
+            # z domyslnej kolekcji, wiec restart gubil wybor uzytkownika.
+            saved_mode = saved.get("collection_mode")
+            if (
+                isinstance(saved_mode, str)
+                and saved_mode
+                and saved_mode != state.collection_mode
+                and await asyncio.to_thread(load_raw_paths, saved_mode, self.root_dir)
+            ):
+                logger.info("Resuming last played collection: %s", saved_mode)
+                state.collection_mode = saved_mode
         paths = await asyncio.to_thread(load_raw_paths, state.collection_mode, self.root_dir)
         if not paths:
             return None
@@ -97,7 +113,8 @@ class PlaybackEngine:
         filtered = [p for p in paths if p not in blacklist_tracks]
         restored = False
         if state.guild_id:
-            saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
+            if saved is None:
+                saved = await asyncio.to_thread(load_queue, state.guild_id, self.root_dir)
             if can_restore_queue(saved, filtered, state.collection_mode):
                 restore_queue(saved, state)
                 state.is_looping = self.default_loop  # <-- config overrides saved value

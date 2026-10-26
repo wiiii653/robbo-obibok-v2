@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -334,6 +335,77 @@ class TestPlaybackEngine:
         assert state.voice_channel_id is None
         assert state.search_results == []
         assert state.search_collection_id == ""
+
+    def test_start_radio_resumes_last_played_collection_after_restart(self, tmp_path):
+        """Po restarcie bot ma wrocic do kolekcji, ktora gral ostatnio.
+
+        Plik kolejki od zawsze zapisywal ``collection_mode``, ale nikt go nie czytal
+        przy starcie — kazdy restart cicho wracal do kolekcji domyslnej (2026-10-26).
+        """
+        engine = self._make_engine(tmp_path)
+        (tmp_path / "asma_cache_local.json").write_text(
+            '{"tracks": [{"path": "asma/a.sap"}, {"path": "asma/b.sap"}]}'
+        )
+        (tmp_path / "party_cache_local.json").write_text(
+            '{"tracks": [{"path": "party/a.mod"}, {"path": "party/b.mod"}, '
+            '{"path": "party/c.mod"}]}'
+        )
+        queue_dir = tmp_path / "var" / "queues"
+        queue_dir.mkdir(parents=True)
+        guild = 424242
+        (queue_dir / f"{guild}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "queue": ["party/a.mod", "party/b.mod", "party/c.mod"],
+                    "queue_collection_ids": ["party"] * 3,
+                    "position": 1,
+                    "is_looping": True,
+                    "collection_mode": "party",
+                }
+            )
+        )
+
+        state = PlaybackState(guild_id=guild)  # swiezy stan po restarcie
+        assert state.collection_mode == "asma"
+
+        track = asyncio.run(engine.start_radio(state))
+
+        assert state.collection_mode == "party"
+        assert state.queue == ["party/a.mod", "party/b.mod", "party/c.mod"]
+        assert state.position == 1
+        assert track == "party/b.mod"
+
+    def test_start_radio_explicit_collection_beats_saved_mode(self, tmp_path):
+        """Jawny wybor uzytkownika musi wygrac z tym, co pamieta plik kolejki."""
+        engine = self._make_engine(tmp_path)
+        (tmp_path / "asma_cache_local.json").write_text(
+            '{"tracks": [{"path": "asma/a.sap"}, {"path": "asma/b.sap"}]}'
+        )
+        (tmp_path / "party_cache_local.json").write_text(
+            '{"tracks": [{"path": "party/a.mod"}, {"path": "party/b.mod"}]}'
+        )
+        queue_dir = tmp_path / "var" / "queues"
+        queue_dir.mkdir(parents=True)
+        guild = 424243
+        (queue_dir / f"{guild}.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "queue": ["party/a.mod", "party/b.mod"],
+                    "queue_collection_ids": ["party"] * 2,
+                    "position": 0,
+                    "is_looping": True,
+                    "collection_mode": "party",
+                }
+            )
+        )
+
+        state = PlaybackState(guild_id=guild)
+        track = asyncio.run(engine.start_radio(state, collection_id="asma"))
+
+        assert state.collection_mode == "asma"
+        assert track in {"asma/a.sap", "asma/b.sap"}
 
     @pytest.mark.asyncio
     async def test_play_track_failure_resets_state(self, tmp_path):
