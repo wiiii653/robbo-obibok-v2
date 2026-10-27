@@ -27,6 +27,14 @@ VOICE_RECONNECT_THROTTLE_MAX = 5  # max connect attempts per window per guild
 VOICE_RECONNECT_THROTTLE_BREAK = 60.0  # sleep after hitting the throttle cap
 VOICE_RECONNECT_COOLDOWN = 0.5  # min seconds between disconnect() and connect()
 
+# After the reconnect budget is exhausted the watchdog used to go silent until a
+# human restarted the bot. It now re-arms itself after this cooldown: the voice
+# session is usually wedged inside discord.py (the 30 s voice-WS timeout), and a
+# retry once the recent-attempt window has cooled down connects fine. Every
+# re-arm is gated on a real listener being in the channel, so an empty channel
+# never gets a pointless voice connection.
+VOICE_RECONNECT_REARM_DELAY = 300.0  # seconds before a given-up guild retries
+
 
 class ObibokBot(commands.Bot):
     def __init__(
@@ -66,6 +74,8 @@ class ObibokBot(commands.Bot):
         self._voice_reconnect_attempts: dict[int, int] = {}
         self._voice_reconnect_times: dict[int, list[float]] = {}
         self._pending_voice_reconnects: set[int] = set()
+        self._voice_rearm_at: dict[int, float] = {}
+        self._last_voice_channel_id: dict[int, int] = {}
         self._np_messages_max = 200
         self._started_at = time.monotonic()
         self._metrics: dict[str, int] = {
@@ -208,6 +218,37 @@ class ObibokBot(commands.Bot):
         self.release_lease(guild_id)
         self._pending_voice_reconnects.add(guild_id)
 
+    def resolve_voice_channel(self, guild_id: int) -> discord.VoiceChannel | None:
+        """Find the channel to (re)join, tolerating a cleared playback state.
+
+        ``PlaybackEngine._reset_runtime_state`` blanks ``state.voice_channel_id``
+        when the engine is stopped, which used to leave the watchdog with nothing
+        to reconnect to ("voice_channel_id None not found or invalid"). Fall back
+        to the last channel we actually connected to, then to the configured
+        auto-start channel name.
+        """
+        state = self.get_state(guild_id)
+        guild = self.get_guild(guild_id)
+        if not guild:
+            return None
+        candidates = (state.voice_channel_id, self._last_voice_channel_id.get(guild_id))
+        for channel_id in candidates:
+            if not channel_id:
+                continue
+            channel = guild.get_channel(channel_id)
+            if isinstance(channel, discord.VoiceChannel):
+                return channel
+        if self.auto_start_channel:
+            channel = discord.utils.get(guild.voice_channels, name=self.auto_start_channel)
+            if isinstance(channel, discord.VoiceChannel):
+                return channel
+        return None
+
+    @staticmethod
+    def _human_listeners(channel: discord.VoiceChannel) -> list[Any]:
+        """Return the non-bot members sitting in ``channel``."""
+        return [member for member in getattr(channel, "members", []) if not member.bot]
+
     async def _retry_voice_reconnect(self, guild_id: int) -> None:
         """Try one reconnect; watchdog ticks provide the 30-second retry interval.
 
@@ -261,12 +302,10 @@ class ObibokBot(commands.Bot):
             )
             await asyncio.sleep(backoff)
 
-        if not guild or not state.voice_channel_id:
-            channel = None
-        else:
-            channel = guild.get_channel(state.voice_channel_id)
+        channel = self.resolve_voice_channel(guild_id)
 
         if channel and isinstance(channel, discord.VoiceChannel):
+            self._last_voice_channel_id[guild_id] = channel.id
             logger.warning(
                 "Health watchdog: reconnecting voice for guild %s (attempt %s/3)",
                 guild_id,
@@ -287,6 +326,7 @@ class ObibokBot(commands.Bot):
                 self._pending_voice_reconnects.discard(guild_id)
                 self._voice_reconnect_attempts.pop(guild_id, None)
                 self._voice_reconnect_times.pop(guild_id, None)
+                self._voice_rearm_at.pop(guild_id, None)
                 playback_cog = self.get_cog("PlaybackCog")
                 if playback_cog:
                     await playback_cog._recover_voice(guild_id, new_vc)
@@ -311,14 +351,62 @@ class ObibokBot(commands.Bot):
         if attempts < 3:
             return
         logger.error(
-            "Health watchdog: reconnect limit reached for guild %s; stopping playback", guild_id
+            "Health watchdog: reconnect limit reached for guild %s; stopping playback, "
+            "will re-arm in %.0fs",
+            guild_id,
+            VOICE_RECONNECT_REARM_DELAY,
         )
         self._pending_voice_reconnects.discard(guild_id)
         self._voice_reconnect_attempts.pop(guild_id, None)
+        self._voice_reconnect_times.pop(guild_id, None)
         state.is_playing = False
         await self.engine.stop(state)
         await self.cancel_monitor(guild_id)
         self.release_lease(guild_id)
+        # Do not stay silent forever: a wedged voice session usually clears once
+        # the recent-attempt window has cooled down, so schedule one more round.
+        self._voice_rearm_at[guild_id] = time.monotonic() + VOICE_RECONNECT_REARM_DELAY
+
+    async def _rearm_voice_reconnect(self, guild_id: int) -> bool:
+        """Retry a guild whose reconnect budget was exhausted.
+
+        Returns True when the retry was attempted. The channel is resolved even
+        when the playback state was reset, and the retry only happens if a human
+        is actually in that channel — no listener, no pointless voice connection.
+        """
+        channel = self.resolve_voice_channel(guild_id)
+        if channel is None:
+            logger.info("Health watchdog: not re-arming guild %s (no voice channel)", guild_id)
+            return False
+        listeners = self._human_listeners(channel)
+        if not listeners:
+            logger.info(
+                "Health watchdog: not re-arming guild %s (nobody in %s)", guild_id, channel.name
+            )
+            return False
+        logger.warning(
+            "Health watchdog: re-arming voice reconnect for guild %s after cooldown", guild_id
+        )
+        self._last_voice_channel_id[guild_id] = channel.id
+        self._voice_reconnect_attempts.pop(guild_id, None)
+        self._voice_reconnect_times.pop(guild_id, None)
+        self._pending_voice_reconnects.add(guild_id)
+        playback_cog = self.get_cog("PlaybackCog")
+        resume = getattr(playback_cog, "resume_after_rearm", None)
+        if resume is not None:
+            # Full resume restarts the engine (start_radio) and the monitor, not
+            # just the Discord transport — the engine was stopped when we gave up.
+            try:
+                resumed = await resume(guild_id)
+            except Exception as exc:
+                logger.warning("Health watchdog: re-arm resume failed for guild %s: %s", guild_id, exc)
+                self._pending_voice_reconnects.discard(guild_id)
+                return False
+            if resumed:
+                self._pending_voice_reconnects.discard(guild_id)
+            return resumed
+        await self._retry_voice_reconnect(guild_id)
+        return True
 
     def health_snapshot(self) -> dict[str, object]:
         """Return a non-blocking snapshot suitable for diagnostics and support."""
@@ -402,6 +490,16 @@ class ObibokBot(commands.Bot):
             except Exception as exc:
                 logger.warning("Health watchdog: reconnect check failed for guild %s: %s", gid, exc)
                 continue
+        # Re-arm guilds that exhausted their reconnect budget: once the cooldown
+        # has passed, try again instead of staying silent until a human restarts.
+        for gid, due in list(self._voice_rearm_at.items()):
+            if time.monotonic() < due:
+                continue
+            self._voice_rearm_at.pop(gid, None)
+            try:
+                await self._rearm_voice_reconnect(gid)
+            except Exception as exc:
+                logger.warning("Health watchdog: re-arm failed for guild %s: %s", gid, exc)
         # Recover orphaned playback — state says playing but no active stream
         # (happens when voice disconnects and stream ends without RECONNECT)
         now = time.monotonic()

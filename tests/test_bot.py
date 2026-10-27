@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 import src.bot as src_bot_mod
@@ -798,3 +799,159 @@ class TestFavoritesCommandBranches:
         await cog.playlists.callback(cog, ctx)
 
         ctx.send.assert_awaited_once_with("No saved playlists.")
+
+
+class TestVoiceReconnectRearm:
+    """A guild that exhausted its reconnect budget must re-arm itself instead of
+    staying silent until a human restarts the bot (2026-10-28 regression)."""
+
+    @staticmethod
+    def _channel(*, humans: int = 1):
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.id = 4242
+        channel.name = "Chiptune Radio"
+        members = []
+        for index in range(humans):
+            member = MagicMock()
+            member.bot = False
+            member.id = 900 + index
+            members.append(member)
+        channel.members = members
+        return channel
+
+    @pytest.mark.asyncio
+    async def test_giving_up_schedules_a_rearm(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        bot._pending_voice_reconnects.add(gid)
+        bot._voice_reconnect_attempts[gid] = 2  # the next attempt is the third
+        with (
+            patch.object(src_bot_mod, "VOICE_RECONNECT_REARM_DELAY", 300.0),
+            patch("time.monotonic", return_value=1000.0),
+            patch("asyncio.sleep", new=AsyncMock()),
+            patch.object(bot, "resolve_voice_channel", return_value=None),
+            patch.object(bot.engine, "stop", new=AsyncMock()),
+            patch.object(bot, "cancel_monitor", new=AsyncMock()),
+            patch.object(bot, "release_lease"),
+        ):
+            await bot._retry_voice_reconnect(gid)
+        assert bot._voice_rearm_at[gid] == 1300.0
+        assert gid not in bot._pending_voice_reconnects
+
+    @pytest.mark.asyncio
+    async def test_rearm_without_listener_stays_idle(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        channel = self._channel(humans=0)
+        with patch.object(bot, "resolve_voice_channel", return_value=channel):
+            resumed = await bot._rearm_voice_reconnect(gid)
+        assert resumed is False
+        assert gid not in bot._pending_voice_reconnects
+
+    @pytest.mark.asyncio
+    async def test_rearm_with_listener_delegates_to_playback_cog(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        channel = self._channel(humans=1)
+        cog = MagicMock()
+        cog.resume_after_rearm = AsyncMock(return_value=True)
+        with (
+            patch.object(bot, "resolve_voice_channel", return_value=channel),
+            patch.object(bot, "get_cog", return_value=cog),
+        ):
+            resumed = await bot._rearm_voice_reconnect(gid)
+        assert resumed is True
+        cog.resume_after_rearm.assert_awaited_once_with(gid)
+        assert bot._last_voice_channel_id[gid] == channel.id
+        assert gid not in bot._pending_voice_reconnects
+
+    @pytest.mark.asyncio
+    async def test_rearm_falls_back_to_transport_retry(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        channel = self._channel(humans=1)
+        with (
+            patch.object(bot, "resolve_voice_channel", return_value=channel),
+            patch.object(bot, "get_cog", return_value=None),
+            patch.object(bot, "_retry_voice_reconnect", new=AsyncMock()) as retry,
+        ):
+            resumed = await bot._rearm_voice_reconnect(gid)
+        assert resumed is True
+        retry.assert_awaited_once_with(gid)
+
+    @pytest.mark.asyncio
+    async def test_watchdog_runs_due_rearm(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        bot._voice_rearm_at[gid] = 100.0
+        with (
+            patch("time.monotonic", return_value=1000.0),
+            patch.object(bot.engine.audio, "ensure_ready"),
+            patch.object(bot, "_rearm_voice_reconnect", new=AsyncMock()) as rearm,
+            patch.object(bot, "_check_active_voice_streams", new=AsyncMock()),
+        ):
+            await bot._health_watchdog_tick()
+        rearm.assert_awaited_once_with(gid)
+        assert gid not in bot._voice_rearm_at
+
+    @pytest.mark.asyncio
+    async def test_watchdog_leaves_future_rearm_alone(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        bot._voice_rearm_at[gid] = 9999.0
+        with (
+            patch("time.monotonic", return_value=1000.0),
+            patch.object(bot.engine.audio, "ensure_ready"),
+            patch.object(bot, "_rearm_voice_reconnect", new=AsyncMock()) as rearm,
+            patch.object(bot, "_check_active_voice_streams", new=AsyncMock()),
+        ):
+            await bot._health_watchdog_tick()
+        rearm.assert_not_awaited()
+        assert bot._voice_rearm_at[gid] == 9999.0
+
+    def test_resolve_voice_channel_prefers_state_then_memory(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        live = self._channel()
+        remembered = self._channel()
+        remembered.id = 5555
+        guild = MagicMock()
+        guild.get_channel = lambda cid: {live.id: live, remembered.id: remembered}.get(cid)
+        guild.voice_channels = []
+        bot.get_guild = MagicMock(return_value=guild)
+
+        # state has no channel, memory does => the remembered channel is used
+        bot._last_voice_channel_id[gid] = remembered.id
+        assert bot.resolve_voice_channel(gid) is remembered
+
+        # the live state wins over the remembered one
+        bot.get_state(gid).voice_channel_id = live.id
+        assert bot.resolve_voice_channel(gid) is live
+
+    def test_resolve_voice_channel_falls_back_to_configured_name(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        bot.auto_start_channel = "Chiptune Radio"
+        gid = 4321
+        channel = self._channel()
+        guild = MagicMock()
+        guild.get_channel = MagicMock(return_value=None)
+        guild.voice_channels = [channel]
+        bot.get_guild = MagicMock(return_value=guild)
+        assert bot.resolve_voice_channel(gid) is channel
+
+    @pytest.mark.asyncio
+    async def test_playback_cog_resume_after_rearm_restarts_the_queue(self, tmp_path):
+        bot = _make_bot(tmp_path)
+        gid = 4321
+        channel = self._channel(humans=1)
+        cog = PlaybackCog(bot)
+        cog._connect_and_play = AsyncMock()
+        with (
+            patch.object(bot, "get_guild", return_value=MagicMock()),
+            patch.object(bot, "resolve_voice_channel", return_value=channel),
+            patch.object(bot, "try_acquire_lease", return_value=True),
+            patch.object(bot.engine, "start_radio", new=AsyncMock(return_value="Slow Motion.mod")),
+        ):
+            resumed = await cog.resume_after_rearm(gid)
+        assert resumed is True
+        cog._connect_and_play.assert_awaited_once()

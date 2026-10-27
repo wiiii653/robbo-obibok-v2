@@ -73,6 +73,47 @@ class PlaybackCog(commands.Cog):
                     self.bot.release_lease(guild.id)
                     break
 
+    async def resume_after_rearm(self, guild_id: int) -> bool:
+        """Resume the radio after the watchdog exhausted its reconnect budget.
+
+        The watchdog gives up after three failed voice attempts and stops the
+        engine, so rebuilding only the transport is not enough — the queue has to
+        be restarted as well (``start_radio`` reads the remembered collection) and
+        then connected. Returns True when playback actually resumed.
+        """
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return False
+        channel = self.bot.resolve_voice_channel(guild_id)
+        if not isinstance(channel, discord.VoiceChannel):
+            return False
+        members = [member for member in channel.members if not member.bot]
+        if not members:
+            logger.info("re-arm: nobody in %s, staying idle", channel.name)
+            return False
+        state = self.bot.get_state(guild_id)
+        if state.is_playing:
+            return False
+        if not self.bot.try_acquire_lease(guild):
+            return False
+        try:
+            track = await self.bot.engine.start_radio(state, user_id=members[0].id)
+            if not track:
+                self.bot.release_lease(guild_id)
+                return False
+            await self._connect_and_play(
+                PlaybackCtx(guild, members[0], guild.voice_client, channel.send),
+                state,
+                channel,
+                failure_prefix="Re-arm failed",
+            )
+        except Exception as exc:
+            logger.warning("re-arm: resume failed for guild %s: %s", guild_id, exc)
+            self.bot.release_lease(guild_id)
+            return False
+        logger.info("re-arm: resumed playback for %d users in %s", len(members), channel.name)
+        return True
+
     @commands.Cog.listener()
     async def on_resumed(self) -> None:
         """After gateway RESUME, restart active streams that lost voice sync."""
