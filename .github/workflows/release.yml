@@ -24,13 +24,20 @@ jobs:
           name: robbo-obibok-${{ github.ref_name }}
           path: dist/*
           if-no-files-found: error
-      # Realny GitHub Release: tworzony wbudowanym `gh` (bez third-party action),
-      # z artefaktami z dist/ i notatkami generowanymi z historii commitów.
-      - name: Create GitHub Release
+      # Real GitHub Release, created with the built-in `gh` (no third-party action),
+      # carrying the dist/ artifacts and notes generated from the commit history.
+      # Idempotent: when a release already exists (e.g. created by hand with custom
+      # notes), only the artifacts are attached instead of failing the whole job.
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
-            --verify-tag
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists — uploading build artifacts."
+            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          fi
