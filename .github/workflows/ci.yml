@@ -7,6 +7,12 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # is_junk_path() rejects any path with a dot-prefixed component, and pytest
+    # derives tmp_path from TMPDIR — a dotted temp dir fails four tests for
+    # reasons unrelated to the code. conftest.py normalises this too; pinning it
+    # here keeps CI independent of the runner's environment.
+    env:
+      TMPDIR: /tmp
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
