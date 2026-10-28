@@ -399,7 +399,9 @@ class ObibokBot(commands.Bot):
             try:
                 resumed = await resume(guild_id)
             except Exception as exc:
-                logger.warning("Health watchdog: re-arm resume failed for guild %s: %s", guild_id, exc)
+                logger.warning(
+                    "Health watchdog: re-arm resume failed for guild %s: %s", guild_id, exc
+                )
                 self._pending_voice_reconnects.discard(guild_id)
                 return False
             if resumed:

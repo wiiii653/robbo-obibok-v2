@@ -557,9 +557,10 @@ def unpack_archive(path: Path, dest_dir: Path) -> bool:
 def _same_bytes(candidate: Path, source: Path) -> bool:
     """Czy kandydat ma identyczna zawartosc jak source (po rozmiarze juz wiemy, ze tak)."""
     try:
-        return hashlib.sha256(candidate.read_bytes()).digest() == hashlib.sha256(
-            source.read_bytes()
-        ).digest()
+        return (
+            hashlib.sha256(candidate.read_bytes()).digest()
+            == hashlib.sha256(source.read_bytes()).digest()
+        )
     except OSError:
         # Nie umiemy sprawdzic — lepiej uznac za duplikat niz mnozyc kopie tej samej muzyki.
         return True
@@ -575,9 +576,7 @@ def dedupe_path(dest: Path, size: int, source: Path | None = None) -> Path:
     Teraz skanujemy wszystkie kandydaty i porownujemy zawartosc (sha256), a nie
     sam rozmiar.
     """
-    candidates = [dest] + [
-        dest.with_name(f"{dest.stem} ({i}){dest.suffix}") for i in range(2, 100)
-    ]
+    candidates = [dest] + [dest.with_name(f"{dest.stem} ({i}){dest.suffix}") for i in range(2, 100)]
     for cand in candidates:
         if cand.exists() and cand.stat().st_size == size:
             if source is None or _same_bytes(cand, source):
