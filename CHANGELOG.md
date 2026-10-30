@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-30
+
+Maintenance release: no runtime behaviour changes. It makes CI reproducible, the
+release job safe to re-run, and it was cut so the tag itself builds a release end
+to end — `v2.1.0` shipped its artifacts by hand because the workflow collided with
+the release that already existed.
+
+**Packaging & CI**
+- GitHub Actions moved to their current majors: `actions/checkout@v7`,
+  `actions/setup-python@v7`, `actions/upload-artifact@v7`. The previous
+  `checkout@v4` / `setup-python@v5` / `upload-artifact@v4` lines still ran on the
+  deprecated Node 20 runtime that GitHub now force-migrates to Node 24.
+- `runs-on` is pinned to `ubuntu-24.04` instead of the `ubuntu-latest` alias,
+  which migrates to Ubuntu 26 and would silently change the test image.
+- The release job is idempotent: when a release already exists it attaches the
+  built artifacts with `gh release upload --clobber` instead of failing the job
+  with `a release with the same tag name already exists`.
+- The suite no longer depends on the runner's `TMPDIR`. `tmp_path` derived from a
+  dotted temporary directory collided with `is_junk_path()`, which rejects any
+  dot-prefixed path component, and four tests failed for reasons unrelated to the
+  code. `TMPDIR` is pinned in the workflow and normalised in `conftest.py`.
+
+**Style**
+- `ruff format` applied to the grabber and the bot; `ruff format --check` in CI is
+  clean again.
+
 ## [2.1.0] - 2026-10-28
 
 Reliability release: the radio no longer goes silent after a lost voice session,
